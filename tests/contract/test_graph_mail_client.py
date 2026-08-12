@@ -28,7 +28,12 @@ def message_payload(*, include_body: bool = False) -> dict[str, object]:
         "id": "graph-1",
         "internetMessageId": "<mail-1@example.com>",
         "subject": "Interview invitation",
-        "from": {"emailAddress": {"address": "recruiter@Example.COM"}},
+        "from": {
+            "emailAddress": {
+                "name": "Example Recruiter",
+                "address": "recruiter@Example.COM",
+            }
+        },
         "receivedDateTime": "2026-08-12T08:00:00Z",
         "webLink": "https://outlook.office.com/mail/id/graph-1",
         "hasAttachments": True,
@@ -100,6 +105,8 @@ async def test_message_retrieval_keeps_body_transient_and_never_calls_attachment
         mail = await client.fetch_message(account_id=uuid4(), message_id="graph-1")
 
     assert mail.body_content == "<p>Hello</p>"
+    assert mail.sender_name == "Example Recruiter"
+    assert mail.sender_address == "recruiter@Example.COM"
     assert mail.metadata.body_hash is not None
     assert "body" in route.calls[0].request.url.params["$select"]
     assert all("attachments" not in str(call.request.url) for call in respx.calls)

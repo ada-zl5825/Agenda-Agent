@@ -1,7 +1,7 @@
 # Recruitment Inbox Agent
 
-面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0 和
-Phase 1：Microsoft 委托授权、只读邮件访问、Inbox 增量同步和元数据持久化。
+面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
+Phase 1，并正在交付 Phase 2：邮件归一化与确定性隐私处理。
 
 ## Phase 1 已实现
 
@@ -16,8 +16,19 @@ Phase 1：Microsoft 委托授权、只读邮件访问、Inbox 增量同步和元
 - PostgreSQL 邮件元数据幂等 upsert
 - Azure Functions ASGI 入口和每 10 分钟一次的 Timer Trigger
 
-Phase 1 不包含 LLM、邮件归一化、Action Link、附件下载、日历或自动发信。
-数据库不保存原始邮件正文、HTML、附件或明文 OAuth token。
+## Phase 2 已实现
+
+- 使用 BeautifulSoup + lxml 将 HTML 确定性归一化为文本
+- 删除 script、style、隐藏节点、图片/tracking pixel、无关 footer 与 quoted history
+- 解析 126 自动转发和嵌套转发邮件，优先使用最内层原始招聘人、主题和正文
+- 在 HTML 清理前发现 HTTP(S) 链接；原始链接仅存在于短生命周期敏感对象中
+- 删除个人邮箱、电话号码、candidate ID、身份证/护照和学号模式
+- 产生唯一允许跨越未来模型边界的 sanitized text
+- 基于中英文主题、正文和发件域名的高召回招聘邮件 prefilter
+
+Phase 2 不包含链接分类、链接加密或 SecureLink 持久化，这些属于 Phase 3；也不包含
+LLM、LangGraph、附件下载、日历或自动发信。数据库仍不保存原始邮件正文、HTML、
+附件或明文 OAuth token。
 
 ## 本地启动
 
@@ -68,7 +79,9 @@ uv run mypy src
 uv run pytest
 ```
 
-Graph HTTP 契约使用 `respx` 测试。Docker 可用时可额外执行 PostgreSQL 集成测试：
+Graph HTTP 契约使用 `respx` 测试；邮件夹具覆盖中文、英文和 126 嵌套转发场景；
+privacy regression 验证 URL token、PII、隐藏内容和原始正文不会越过安全边界。
+Docker 可用时可额外执行 PostgreSQL 集成测试：
 
 ```powershell
 $env:RUN_POSTGRES_INTEGRATION="1"

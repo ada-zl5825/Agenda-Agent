@@ -13,6 +13,8 @@ anyio==4.14.2
     #   starlette
 azure-functions==1.25.0
     # via recruitment-inbox-agent
+beautifulsoup4==4.15.0
+    # via recruitment-inbox-agent
 certifi==2026.7.22
     # via
     #   httpcore
@@ -42,6 +44,8 @@ idna==3.18
     #   anyio
     #   httpx
     #   requests
+lxml==6.1.1
+    # via recruitment-inbox-agent
 mako==1.4.1
     # via alembic
 markupsafe==3.0.3
@@ -73,6 +77,8 @@ python-dotenv==1.2.2
     # via pydantic-settings
 requests==2.34.2
     # via msal
+soupsieve==2.9.2
+    # via beautifulsoup4
 sqlalchemy==2.0.52
     # via
     #   alembic
@@ -85,6 +91,7 @@ typing-extensions==4.16.0
     # via
     #   alembic
     #   anyio
+    #   beautifulsoup4
     #   fastapi
     #   psycopg
     #   psycopg-pool

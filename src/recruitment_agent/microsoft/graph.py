@@ -109,6 +109,16 @@ class GraphMailClient:
             raise GraphFetchError("Graph returned an invalid message payload") from exc
         return FetchedMail(
             metadata=metadata,
+            sender_name=(
+                message.sender.email_address.name
+                if message.sender is not None and message.sender.email_address is not None
+                else None
+            ),
+            sender_address=(
+                message.sender.email_address.address
+                if message.sender is not None and message.sender.email_address is not None
+                else None
+            ),
             body_content_type=message.body.content_type,
             body_content=message.body.content,
         )

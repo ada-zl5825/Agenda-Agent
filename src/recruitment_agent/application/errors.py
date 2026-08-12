@@ -29,3 +29,11 @@ class DeltaStateInvalidError(GraphFetchError):
 
 class TokenCacheConflictError(ApplicationError):
     code = "TOKEN_CACHE_CONFLICT"
+
+
+class EmailNormalizationError(ApplicationError):
+    code = "EMAIL_NORMALIZATION_FAILED"
+
+
+class PrivacySanitizationError(ApplicationError):
+    code = "PRIVACY_SANITIZATION_FAILED"
