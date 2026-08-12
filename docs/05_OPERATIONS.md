@@ -34,9 +34,9 @@ locally and writes them directly to GitHub environment secrets. Re-running the c
 Microsoft client secret and application encryption secrets, so only run it intentionally.
 
 `deploy-production.yml` runs only for this upstream repository after the `quality` workflow succeeds
-on `main`, or through a manual dispatch from `main`. Azure trusts the exact
-`repo:ada-zl5825/Agenda-Agent:environment:production` OIDC subject. Forks and pull requests cannot
-obtain the production Azure token.
+on `main`, or through a manual dispatch from `main`. Azure trusts the exact immutable GitHub OIDC
+subject built from this repository's owner ID, repository ID, and `production` environment. Forks,
+renames, namespace reuse, and pull requests cannot obtain the production Azure token.
 
 The infrastructure deployment is incremental and idempotent: subsequent runs update the same
 resources. The concurrency group permits only one production deployment at a time.
