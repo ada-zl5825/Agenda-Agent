@@ -10,6 +10,13 @@ from recruitment_agent.domain.enums import (
     RecruitmentEventType,
 )
 from recruitment_agent.domain.event import RecruitmentEvent
+from recruitment_agent.domain.mail import (
+    MailSyncState,
+    MailSyncStatus,
+    SourceEmail,
+    SourceEmailCandidate,
+    SourceEmailProcessingStatus,
+)
 
 __all__ = [
     "ActionItem",
@@ -18,6 +25,11 @@ __all__ = [
     "Application",
     "ApplicationStatus",
     "EventStatus",
+    "MailSyncState",
+    "MailSyncStatus",
     "RecruitmentEvent",
     "RecruitmentEventType",
+    "SourceEmail",
+    "SourceEmailCandidate",
+    "SourceEmailProcessingStatus",
 ]

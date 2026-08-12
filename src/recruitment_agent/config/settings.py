@@ -1,10 +1,13 @@
 """Environment-backed settings with deterministic validation."""
 
+from base64 import b64decode
+from binascii import Error as Base64Error
 from enum import StrEnum
 from functools import lru_cache
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,3 +72,79 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Load and cache process configuration at the composition boundary."""
     return Settings()
+
+
+class MicrosoftSettings(BaseSettings):
+    """Phase 1 Microsoft Graph, OAuth, and mail synchronization settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    microsoft_client_id: str
+    microsoft_client_secret: SecretStr = Field(repr=False)
+    microsoft_tenant: str = "consumers"
+    microsoft_redirect_uri: AnyHttpUrl
+    microsoft_connection_id: UUID
+
+    token_cache_encryption_key: SecretStr = Field(repr=False)
+    token_cache_encryption_key_version: str = "v1"
+
+    graph_base_url: AnyHttpUrl = AnyHttpUrl("https://graph.microsoft.com/v1.0")
+    graph_request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    graph_max_retry_attempts: int = Field(default=4, ge=1, le=10)
+    graph_max_retry_delay_seconds: float = Field(default=30.0, gt=0, le=300)
+
+    mail_folder_id: str = "inbox"
+    mail_sync_enabled: bool = True
+    mail_sync_interval_minutes: int = Field(default=10, ge=1, le=1440)
+
+    @field_validator("microsoft_client_id", "mail_folder_id", "token_cache_encryption_key_version")
+    @classmethod
+    def require_non_empty(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "value must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("microsoft_tenant")
+    @classmethod
+    def validate_tenant(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "MICROSOFT_TENANT must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("token_cache_encryption_key")
+    @classmethod
+    def validate_token_cache_key(cls, value: SecretStr) -> SecretStr:
+        try:
+            decoded = b64decode(value.get_secret_value(), validate=True)
+        except (Base64Error, ValueError) as exc:
+            msg = "TOKEN_CACHE_ENCRYPTION_KEY must be valid base64"
+            raise ValueError(msg) from exc
+        if len(decoded) != 32:
+            msg = "TOKEN_CACHE_ENCRYPTION_KEY must decode to exactly 32 bytes"
+            raise ValueError(msg)
+        return value
+
+    @property
+    def authority(self) -> str:
+        """Return the configured Microsoft identity authority URL."""
+        return f"https://login.microsoftonline.com/{self.microsoft_tenant}"
+
+    @property
+    def token_cache_key_bytes(self) -> bytes:
+        """Decode the validated AES-256 token-cache key."""
+        return b64decode(self.token_cache_encryption_key.get_secret_value(), validate=True)
+
+
+@lru_cache(maxsize=1)
+def get_microsoft_settings() -> MicrosoftSettings:
+    """Load Phase 1 settings only at a Microsoft integration boundary."""
+    return MicrosoftSettings()
