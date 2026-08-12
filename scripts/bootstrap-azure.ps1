@@ -84,6 +84,8 @@ $SubscriptionId = [string] $account.id
 $tenantId = [string] $account.tenantId
 $resourceGroup = az group show --name $ResourceGroupName --only-show-errors | ConvertFrom-Json
 $resourceGroupId = [string] $resourceGroup.id
+$repository = gh api "repos/$GitHubRepository" | ConvertFrom-Json
+$oidcSubject = "repo:$($repository.owner.login)@$($repository.owner.id)/$($repository.name)@$($repository.id):environment:$EnvironmentName"
 
 $requiredProviders = @(
     "Microsoft.App",
@@ -173,7 +175,17 @@ if (-not $federatedCredentialId) {
         --identity-name $deploymentIdentityName `
         --resource-group $ResourceGroupName `
         --issuer "https://token.actions.githubusercontent.com" `
-        --subject "repo:$($GitHubRepository):environment:$EnvironmentName" `
+        --subject $oidcSubject `
+        --audiences "api://AzureADTokenExchange" `
+        --only-show-errors | Out-Null
+}
+else {
+    az identity federated-credential update `
+        --name $federatedCredentialName `
+        --identity-name $deploymentIdentityName `
+        --resource-group $ResourceGroupName `
+        --issuer "https://token.actions.githubusercontent.com" `
+        --subject $oidcSubject `
         --audiences "api://AzureADTokenExchange" `
         --only-show-errors | Out-Null
 }
