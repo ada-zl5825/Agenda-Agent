@@ -1,0 +1,4 @@
+interface:
+  display_name: "Secure Recruitment Action Links"
+  short_description: "Protect and resolve secret-bearing action links"
+  default_prompt: "Use $secure-action-links to implement safe opaque recruitment action-link handling."

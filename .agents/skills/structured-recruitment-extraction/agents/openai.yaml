@@ -1,0 +1,4 @@
+interface:
+  display_name: "Structured Recruitment Extraction"
+  short_description: "Build typed and validated recruitment extraction"
+  default_prompt: "Use $structured-recruitment-extraction to add a typed recruitment extraction contract."

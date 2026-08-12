@@ -1,0 +1,4 @@
+interface:
+  display_name: "Recruitment Domain"
+  short_description: "Implement deterministic recruitment domain behavior"
+  default_prompt: "Use $recruitment-domain to implement a deterministic, idempotent recruitment state transition."

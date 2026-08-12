@@ -1,0 +1,4 @@
+interface:
+  display_name: "Recruitment LangGraph Workflow"
+  short_description: "Build resumable recruitment workflow orchestration"
+  default_prompt: "Use $langgraph-workflow to implement or change the explicit recruitment StateGraph."

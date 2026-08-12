@@ -1,0 +1,4 @@
+interface:
+  display_name: "Graph Mail and Calendar"
+  short_description: "Build safe Microsoft Graph mail and calendar flows"
+  default_prompt: "Use $graph-mail-calendar to implement retry-safe Microsoft Graph mail or calendar behavior."

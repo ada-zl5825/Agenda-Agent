@@ -1,0 +1,4 @@
+interface:
+  display_name: "Private Email Processing"
+  short_description: "Protect recruitment email data across boundaries"
+  default_prompt: "Use $privacy-email-processing to implement privacy-safe recruitment email handling."

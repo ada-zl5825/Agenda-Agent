@@ -1,0 +1,4 @@
+interface:
+  display_name: "Azure Serverless Operations"
+  short_description: "Build reproducible and stateless Azure operations"
+  default_prompt: "Use $azure-serverless-ops to configure a stateless, reproducible Azure Functions component."
