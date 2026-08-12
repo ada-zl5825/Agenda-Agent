@@ -168,6 +168,30 @@ class SourceEmailModel(TimestampMixin, Base):
     )
 
 
+class SecureLinkModel(TimestampMixin, Base):
+    """Encrypted external destination with safe display metadata only."""
+
+    __tablename__ = "secure_links"
+    __table_args__ = (
+        UniqueConstraint("source_email_id", "ref", name="uq_secure_links_source_email_ref"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    source_email_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.source_emails.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ref: Mapped[str] = mapped_column(String(32), nullable=False)
+    link_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    encrypted_url: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encryption_key_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    display_text: Mapped[str | None] = mapped_column(Text)
+
+
 class ApplicationModel(TimestampMixin, Base):
     __tablename__ = "applications"
     __table_args__ = (
@@ -289,7 +313,14 @@ class ActionItemModel(TimestampMixin, Base):
     type: Mapped[str] = mapped_column(String(40), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    secure_link_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    secure_link_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.secure_links.id",
+            ondelete="SET NULL",
+            name="fk_action_items_secure_link",
+        ),
+    )
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

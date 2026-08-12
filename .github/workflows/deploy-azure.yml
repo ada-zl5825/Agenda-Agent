@@ -58,6 +58,7 @@ jobs:
             microsoftClientSecret=${{ secrets.MICROSOFT_CLIENT_SECRET }}
             microsoftConnectionId=${{ vars.MICROSOFT_CONNECTION_ID }}
             tokenCacheEncryptionKey=${{ secrets.TOKEN_CACHE_ENCRYPTION_KEY }}
+            linkEncryptionKey=${{ secrets.LINK_ENCRYPTION_KEY }}
           deploymentMode: Validate
 
       - name: Deploy infrastructure
@@ -76,6 +77,7 @@ jobs:
             microsoftClientSecret=${{ secrets.MICROSOFT_CLIENT_SECRET }}
             microsoftConnectionId=${{ vars.MICROSOFT_CONNECTION_ID }}
             tokenCacheEncryptionKey=${{ secrets.TOKEN_CACHE_ENCRYPTION_KEY }}
+            linkEncryptionKey=${{ secrets.LINK_ENCRYPTION_KEY }}
           deploymentMode: Incremental
 
       - name: Deploy Azure Functions application

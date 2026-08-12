@@ -2,6 +2,7 @@
 
 import html
 import re
+from collections.abc import Mapping
 
 from bs4 import BeautifulSoup, Comment, Tag
 
@@ -27,12 +28,19 @@ class HtmlBodyNormalizer:
         re.compile(r"^(?:unsubscribe|退订)(?:\s|$)", re.IGNORECASE),
     )
 
-    def normalize(self, *, content_type: str, content: str) -> str:
+    def normalize(
+        self,
+        *,
+        content_type: str,
+        content: str,
+        link_replacements: Mapping[str, str] | None = None,
+    ) -> str:
+        replacements = link_replacements or {}
         try:
             if content_type.lower() == "html":
-                text = self._html_to_text(content)
+                text = self._html_to_text(content, link_replacements=replacements)
             elif content_type.lower() == "text":
-                text = html.unescape(content)
+                text = self._replace_plain_urls(html.unescape(content), replacements)
             else:
                 raise EmailNormalizationError("unsupported message body content type")
         except EmailNormalizationError:
@@ -41,7 +49,7 @@ class HtmlBodyNormalizer:
             raise EmailNormalizationError("message body could not be normalized") from exc
         return self.clean_text(text)
 
-    def _html_to_text(self, content: str) -> str:
+    def _html_to_text(self, content: str, *, link_replacements: Mapping[str, str]) -> str:
         soup = BeautifulSoup(content, "lxml")
         for node in soup.find_all(string=lambda value: isinstance(value, Comment)):
             node.extract()
@@ -63,8 +71,16 @@ class HtmlBodyNormalizer:
             line_break.replace_with("\n")
         for anchor in soup.find_all("a"):
             label = anchor.get_text(" ", strip=True)
-            anchor.replace_with(label or "[LINK]")
-        return soup.get_text("\n")
+            href = anchor.get("href")
+            replacement = None
+            normalized_href = None
+            if isinstance(href, str):
+                normalized_href = html.unescape(href).strip()
+                replacement = link_replacements.get(normalized_href)
+            if replacement is not None and label == normalized_href:
+                label = ""
+            anchor.replace_with(" ".join(part for part in (label, replacement) if part) or "[LINK]")
+        return self._replace_plain_urls(soup.get_text("\n"), link_replacements)
 
     def clean_text(self, text: str) -> str:
         normalized = text.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
@@ -97,6 +113,17 @@ class HtmlBodyNormalizer:
             return True
         style = tag.get("style")
         return isinstance(style, str) and self._HIDDEN_STYLE.search(style) is not None
+
+    @staticmethod
+    def _replace_plain_urls(text: str, replacements: Mapping[str, str]) -> str:
+        replaced = text
+        for raw_url, replacement in sorted(
+            replacements.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            replaced = replaced.replace(raw_url, replacement)
+        return replaced
 
     def _remove_simple_css_hidden_nodes(self, soup: BeautifulSoup) -> None:
         for style in soup.find_all("style"):

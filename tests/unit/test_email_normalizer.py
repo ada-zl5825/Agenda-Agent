@@ -111,3 +111,30 @@ def test_removes_unmarked_blockquote_reply_history() -> None:
 
     assert "interview is confirmed" in normalized.body_text
     assert "Old private reply" not in normalized.body_text
+
+
+def test_visible_url_anchor_is_replaced_by_one_opaque_reference() -> None:
+    raw_url = "https://assessment.example.test/start?token=secret"
+    mail = FetchedMail(
+        metadata=SourceEmailCandidate(
+            graph_message_id="graph-visible-url",
+            internet_message_id=None,
+            subject="Assessment",
+            sender_domain="careers.example",
+            received_at=datetime(2026, 8, 12, 9, tzinfo=UTC),
+            outlook_web_link=None,
+            has_attachments=False,
+        ),
+        sender_name="Recruiter",
+        sender_address="recruiter@careers.example",
+        body_content_type="html",
+        body_content=f'<a href="{raw_url}">{raw_url}</a>',
+    )
+
+    normalized = EmailNormalizer().normalize(
+        source_email_id=uuid4(),
+        mail=mail,
+        link_replacements={raw_url: "[ACTION_LINK_01]"},
+    )
+
+    assert normalized.body_text == "[ACTION_LINK_01]"

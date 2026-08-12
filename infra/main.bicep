@@ -30,6 +30,12 @@ param microsoftConnectionId string
 @description('Base64-encoded 32-byte key used to encrypt the MSAL token cache.')
 param tokenCacheEncryptionKey string
 
+@secure()
+@minLength(44)
+@maxLength(44)
+@description('Base64-encoded 32-byte key used exclusively to encrypt recruitment action links.')
+param linkEncryptionKey string
+
 @description('IANA timezone used for user-facing schedules.')
 param userTimezone string = 'Europe/London'
 
@@ -56,6 +62,7 @@ var appServicePlanName = 'plan-agenda-${resourceToken}'
 var logAnalyticsName = 'log-agenda-${resourceToken}'
 var applicationInsightsName = 'appi-agenda-${resourceToken}'
 var keyVaultName = 'kv-agenda-${take(resourceToken, 13)}'
+var linkEncryptionSecretName = 'recruitment-link-encryption-key'
 var virtualNetworkName = 'vnet-agenda-${resourceToken}'
 var postgresServerName = 'psql-agenda-${resourceToken}'
 var postgresDatabaseName = 'recruitment'
@@ -352,6 +359,14 @@ resource tokenCacheEncryptionKeyValue 'Microsoft.KeyVault/vaults/secrets@2023-07
   }
 }
 
+resource linkEncryptionKeyValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: linkEncryptionSecretName
+  properties: {
+    value: linkEncryptionKey
+  }
+}
+
 resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
   location: location
@@ -411,6 +426,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     name: 'appsettings'
     properties: {
       APP_ENV: 'production'
+      AZURE_CLIENT_ID: runtimeIdentity.properties.clientId
       DATABASE_URL: '@Microsoft.KeyVault(SecretUri=${databaseUrlSecret.properties.secretUriWithVersion})'
       USER_TIMEZONE: userTimezone
       LOG_LEVEL: 'INFO'
@@ -421,6 +437,9 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       MICROSOFT_CONNECTION_ID: microsoftConnectionId
       TOKEN_CACHE_ENCRYPTION_KEY: '@Microsoft.KeyVault(SecretUri=${tokenCacheEncryptionKeyValue.properties.secretUriWithVersion})'
       TOKEN_CACHE_ENCRYPTION_KEY_VERSION: 'v1'
+      AZURE_KEY_VAULT_URL: keyVault.properties.vaultUri
+      LINK_ENCRYPTION_KEY_SECRET_NAME: linkEncryptionSecretName
+      KEY_VAULT_REQUEST_TIMEOUT_SECONDS: '10'
       GRAPH_BASE_URL: 'https://graph.microsoft.com/v1.0'
       GRAPH_REQUEST_TIMEOUT_SECONDS: '30'
       GRAPH_MAX_RETRY_ATTEMPTS: '4'
