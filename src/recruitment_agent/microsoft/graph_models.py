@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class GraphEmailAddress(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    address: str | None = None
+    name: str | None = Field(default=None, repr=False)
+    address: str | None = Field(default=None, repr=False)
 
 
 class GraphRecipient(BaseModel):
@@ -21,7 +22,7 @@ class GraphItemBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content_type: str = Field(alias="contentType")
-    content: str
+    content: str = Field(repr=False)
 
 
 class GraphRemoved(BaseModel):
@@ -34,13 +35,17 @@ class GraphMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
-    internet_message_id: str | None = Field(default=None, alias="internetMessageId")
-    subject: str | None = None
+    internet_message_id: str | None = Field(
+        default=None,
+        alias="internetMessageId",
+        repr=False,
+    )
+    subject: str | None = Field(default=None, repr=False)
     sender: GraphRecipient | None = Field(default=None, alias="from")
     received_at: datetime | None = Field(default=None, alias="receivedDateTime")
-    web_link: str | None = Field(default=None, alias="webLink")
+    web_link: str | None = Field(default=None, alias="webLink", repr=False)
     has_attachments: bool = Field(default=False, alias="hasAttachments")
-    body: GraphItemBody | None = None
+    body: GraphItemBody | None = Field(default=None, repr=False)
     removed: GraphRemoved | None = Field(default=None, alias="@removed")
 
 

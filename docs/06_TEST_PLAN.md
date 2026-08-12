@@ -1,12 +1,20 @@
-# Phase 0 Test Plan
+# Test Plan through Phase 2
 
-The foundation test suite covers:
+The automated suite covers:
 
-- domain entity invariants and timezone-aware normalized datetimes;
-- typed settings validation;
-- FastAPI health response;
-- repository protocol shape;
-- SQLAlchemy metadata, schemas, keys and uniqueness constraints;
-- Alembic migration import and revision metadata.
+- domain invariants and timezone-aware datetimes;
+- settings, FastAPI health/OAuth routes, and Azure deployment packaging;
+- SQLAlchemy metadata and offline Alembic migration compilation;
+- MSAL encrypted cache behavior and Graph delta/retry contracts;
+- idempotent mail synchronization;
+- HTML/plain-text normalization;
+- Chinese 126 forwarding and English nested-forward precedence;
+- hidden content, tracking pixels, scripts, footers, and quoted-history removal;
+- pre-sanitization URL discovery without secret-bearing representations;
+- email, phone, candidate, government, passport, and student-ID redaction;
+- subject and body sanitization before the future model boundary;
+- high-recall recruitment prefilter outcomes;
+- deterministic repeated preparation and the attachment-download prohibition.
 
-PostgreSQL container integration tests will be added with the first persistence use case. Later phases add Graph contracts, email fixtures, privacy regressions, LangGraph branches and E2E acceptance tests from the final technical design.
+The Docker-backed PostgreSQL migration/upsert test runs when `RUN_POSTGRES_INTEGRATION=1`.
+Phase 3 will add secure-link classification, encryption, repository, and link privacy tests.

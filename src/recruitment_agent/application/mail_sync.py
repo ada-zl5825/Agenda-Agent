@@ -19,7 +19,7 @@ class MailDeltaPage:
     delta_link: str | None
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True, repr=False)
 class FetchedMail:
     """Transient full message used by later processing phases.
 
@@ -27,8 +27,18 @@ class FetchedMail:
     """
 
     metadata: SourceEmailCandidate
+    sender_name: str | None
+    sender_address: str | None
     body_content_type: str
     body_content: str
+
+    def __repr__(self) -> str:
+        return (
+            "FetchedMail("
+            f"graph_message_id={self.metadata.graph_message_id!r}, "
+            f"content_type={self.body_content_type!r}, "
+            f"has_attachments={self.metadata.has_attachments!r})"
+        )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
