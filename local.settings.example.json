@@ -1,0 +1,23 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "DATABASE_URL": "postgresql+psycopg://recruitment:recruitment@localhost:5432/recruitment",
+    "MICROSOFT_CLIENT_ID": "",
+    "MICROSOFT_CLIENT_SECRET": "",
+    "MICROSOFT_TENANT": "consumers",
+    "MICROSOFT_REDIRECT_URI": "http://localhost:7071/auth/callback",
+    "MICROSOFT_CONNECTION_ID": "00000000-0000-0000-0000-000000000001",
+    "TOKEN_CACHE_ENCRYPTION_KEY": "",
+    "TOKEN_CACHE_ENCRYPTION_KEY_VERSION": "v1",
+    "GRAPH_BASE_URL": "https://graph.microsoft.com/v1.0",
+    "GRAPH_REQUEST_TIMEOUT_SECONDS": "30",
+    "GRAPH_MAX_RETRY_ATTEMPTS": "4",
+    "GRAPH_MAX_RETRY_DELAY_SECONDS": "30",
+    "MAIL_FOLDER_ID": "inbox",
+    "MAIL_SYNC_ENABLED": "true",
+    "MAIL_SYNC_INTERVAL_MINUTES": "10",
+    "MAIL_SYNC_SCHEDULE": "0 */10 * * * *"
+  }
+}

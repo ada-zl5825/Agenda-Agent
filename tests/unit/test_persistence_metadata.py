@@ -4,13 +4,17 @@ from recruitment_agent.persistence import models as persistence_models  # noqa: 
 from recruitment_agent.persistence.base import Base
 
 
-def test_phase_zero_tables_use_application_schema() -> None:
+def test_phase_one_tables_use_application_schema() -> None:
     expected_tables = {
         "app.action_items",
         "app.application_status_history",
         "app.applications",
         "app.event_history",
+        "app.mail_sync_states",
+        "app.microsoft_authorization_flows",
+        "app.microsoft_connections",
         "app.recruitment_events",
+        "app.source_emails",
     }
 
     assert set(Base.metadata.tables) == expected_tables

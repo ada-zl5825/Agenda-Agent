@@ -8,10 +8,13 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -22,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from recruitment_agent.domain.enums import ActionStatus, ApplicationStatus, EventStatus
+from recruitment_agent.domain.mail import MailSyncStatus, SourceEmailProcessingStatus
 from recruitment_agent.persistence.base import Base
 
 
@@ -38,6 +42,129 @@ class TimestampMixin:
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class MicrosoftConnectionModel(TimestampMixin, Base):
+    """One delegated Microsoft identity with an encrypted serialized MSAL cache."""
+
+    __tablename__ = "microsoft_connections"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    home_account_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64))
+    token_cache_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    token_cache_nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    token_cache_key_version: Mapped[str | None] = mapped_column(String(64))
+    token_cache_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+
+
+class MicrosoftAuthorizationFlowModel(Base):
+    """Single-use, encrypted authorization-code flow state."""
+
+    __tablename__ = "microsoft_authorization_flows"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    connection_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.microsoft_connections.id",
+            ondelete="CASCADE",
+            name="fk_ms_auth_flows_connection",
+        ),
+        nullable=False,
+        index=True,
+    )
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    flow_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    flow_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class MailSyncStateModel(TimestampMixin, Base):
+    """Durable Graph delta cursor for one connection and folder."""
+
+    __tablename__ = "mail_sync_states"
+    __table_args__ = (
+        UniqueConstraint("account_id", "folder_id", name="uq_mail_sync_states_account_folder"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    folder_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    delta_link: Mapped[str | None] = mapped_column(Text)
+    last_sync_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=MailSyncStatus.IDLE.value,
+        server_default=text("'idle'"),
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class SourceEmailModel(TimestampMixin, Base):
+    """Privacy-minimized evidence record; body and attachment columns are forbidden."""
+
+    __tablename__ = "source_emails"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    graph_message_id: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    internet_message_id: Mapped[str | None] = mapped_column(String(512), index=True)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    sender_domain: Mapped[str | None] = mapped_column(String(255))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    outlook_web_link: Mapped[str | None] = mapped_column(Text)
+    body_hash: Mapped[str | None] = mapped_column(String(64))
+    has_attachments: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    processing_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=SourceEmailProcessingStatus.PENDING.value,
+        server_default=text("'pending'"),
+        index=True,
+    )
+    application_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.applications.id", ondelete="SET NULL"),
+        index=True,
     )
 
 

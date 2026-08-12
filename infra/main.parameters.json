@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "uksouth"
+    },
+    "userTimezone": {
+      "value": "Europe/London"
+    },
+    "maximumInstanceCount": {
+      "value": 40
+    },
+    "instanceMemoryMB": {
+      "value": 2048
+    },
+    "mailSyncEnabled": {
+      "value": false
+    }
+  }
+}
