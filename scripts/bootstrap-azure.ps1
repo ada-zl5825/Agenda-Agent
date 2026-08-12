@@ -28,7 +28,13 @@ function New-RandomUrlSafeSecret {
     param([Parameter(Mandatory)][int] $ByteCount)
 
     $bytes = [byte[]]::new($ByteCount)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $random = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $random.GetBytes($bytes)
+    }
+    finally {
+        $random.Dispose()
+    }
     return [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "A").Replace("/", "B")
 }
 
@@ -92,23 +98,38 @@ $requiredProviders = @(
     "Microsoft.Web"
 )
 foreach ($provider in $requiredProviders) {
-    az provider register --namespace $provider --wait --only-show-errors | Out-Null
+    $registrationState = az provider show `
+        --namespace $provider `
+        --query registrationState `
+        --output tsv `
+        --only-show-errors
+    if ($registrationState -ne "Registered") {
+        az provider register --namespace $provider --only-show-errors | Out-Null
+    }
 }
 
-$subscriptionHash = [Convert]::ToHexString(
-    [System.Security.Cryptography.SHA256]::HashData(
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $subscriptionHashBytes = $sha256.ComputeHash(
         [System.Text.Encoding]::UTF8.GetBytes($SubscriptionId)
     )
-).Substring(0, 8).ToLowerInvariant()
+}
+finally {
+    $sha256.Dispose()
+}
+$subscriptionHash = ([BitConverter]::ToString($subscriptionHashBytes) -replace "-", "").Substring(
+    0,
+    8
+).ToLowerInvariant()
 $functionAppName = "func-agenda-agent-$subscriptionHash"
 $redirectUri = "https://$functionAppName.azurewebsites.net/auth/callback"
 
 $deploymentIdentityName = "id-agenda-github-production"
-$identityJson = az identity show `
-    --name $deploymentIdentityName `
+$identityJson = az identity list `
     --resource-group $ResourceGroupName `
-    --only-show-errors 2>$null
-if ($LASTEXITCODE -ne 0) {
+    --query "[?name=='$deploymentIdentityName'] | [0]" `
+    --only-show-errors
+if ([string]::IsNullOrWhiteSpace($identityJson) -or $identityJson -eq "null") {
     $identityJson = az identity create `
         --name $deploymentIdentityName `
         --resource-group $ResourceGroupName `
@@ -140,12 +161,13 @@ foreach ($role in $roleAssignments) {
 }
 
 $federatedCredentialName = "github-production-environment"
-$null = az identity federated-credential show `
-    --name $federatedCredentialName `
+$federatedCredentialId = az identity federated-credential list `
     --identity-name $deploymentIdentityName `
     --resource-group $ResourceGroupName `
-    --only-show-errors 2>$null
-if ($LASTEXITCODE -ne 0) {
+    --query "[?name=='$federatedCredentialName'] | [0].id" `
+    --output tsv `
+    --only-show-errors
+if (-not $federatedCredentialId) {
     az identity federated-credential create `
         --name $federatedCredentialName `
         --identity-name $deploymentIdentityName `
@@ -162,9 +184,12 @@ gh api `
     -F "deployment_branch_policy[protected_branches]=false" `
     -F "deployment_branch_policy[custom_branch_policies]=true" | Out-Null
 
-$branchPolicyExists = gh api `
-    "repos/$GitHubRepository/environments/$EnvironmentName/deployment-branch-policies" `
-    --jq '.branch_policies[] | select(.name == "main") | .id'
+$branchPolicies = gh api `
+    "repos/$GitHubRepository/environments/$EnvironmentName/deployment-branch-policies" |
+    ConvertFrom-Json
+$branchPolicyExists = $branchPolicies.branch_policies |
+    Where-Object { $_.name -eq "main" } |
+    Select-Object -First 1
 if (-not $branchPolicyExists) {
     gh api `
         --method POST `
@@ -178,7 +203,7 @@ $applicationJson = az ad app list `
     --display-name $appDisplayName `
     --query '[0]' `
     --only-show-errors
-if ($applicationJson -eq "null") {
+if ([string]::IsNullOrWhiteSpace($applicationJson) -or $applicationJson -eq "null") {
     $applicationJson = az ad app create `
         --display-name $appDisplayName `
         --sign-in-audience AzureADandPersonalMicrosoftAccount `
@@ -220,7 +245,13 @@ $clientCredential = az ad app credential reset `
 $microsoftConnectionId = [guid]::NewGuid().ToString()
 $postgresPassword = New-RandomUrlSafeSecret -ByteCount 32
 $tokenCacheKeyBytes = [byte[]]::new(32)
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($tokenCacheKeyBytes)
+$tokenKeyRandom = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $tokenKeyRandom.GetBytes($tokenCacheKeyBytes)
+}
+finally {
+    $tokenKeyRandom.Dispose()
+}
 $tokenCacheKey = [Convert]::ToBase64String($tokenCacheKeyBytes)
 
 Set-GitHubVariable -Name "AZURE_CLIENT_ID" -Value ([string] $deploymentIdentity.clientId)
