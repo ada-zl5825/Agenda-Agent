@@ -1,4 +1,4 @@
-"""Small explicit nodes for the Phase 5 Recruitment Mail StateGraph."""
+"""Small explicit nodes for the Phase 5/6 Recruitment Mail StateGraph."""
 
 import re
 from datetime import datetime
@@ -8,6 +8,14 @@ from uuid import UUID
 from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 
+from recruitment_agent.domain.processing import (
+    ApplicationResolution,
+    ApplicationResolutionKind,
+    DomainTransitionPlan,
+    EventResolution,
+    EventResolutionKind,
+    RecruitmentEvidence,
+)
 from recruitment_agent.extraction.models import (
     ExtractionIssueCode,
     ExtractionValidationStatus,
@@ -214,8 +222,52 @@ def _application_review(
     return ReviewRequest(
         review_type=ReviewType.APPLICATION_AMBIGUITY,
         reason=reason,
-        question="Select the reviewed identity or ignore this workflow.",
-        allowed_choices=(*tuple(str(value) for value in candidate_ids), "ignore"),
+        question=(
+            "Select the reviewed company identity, create an unresolved application, "
+            "or ignore."
+        ),
+        allowed_choices=(
+            *tuple(str(value) for value in candidate_ids),
+            "create_new",
+            "ignore",
+        ),
+    )
+
+
+def _application_resolution_review(
+    resolution: ApplicationResolution,
+) -> ReviewRequest:
+    return ReviewRequest(
+        review_type=ReviewType.APPLICATION_AMBIGUITY,
+        reason=resolution.reason,
+        question="Select the matching application, create a new application, or ignore.",
+        allowed_choices=(
+            *tuple(str(value) for value in resolution.candidate_application_ids),
+            "create_new",
+            "ignore",
+        ),
+    )
+
+
+def _extraction_review(reason: str) -> ReviewRequest:
+    return ReviewRequest(
+        review_type=ReviewType.APPLICATION_AMBIGUITY,
+        reason=reason,
+        question="Accept the reviewed structured evidence or ignore this workflow.",
+        allowed_choices=("accept", "ignore"),
+    )
+
+
+def _event_resolution_review(resolution: EventResolution) -> ReviewRequest:
+    return ReviewRequest(
+        review_type=ReviewType.UNCERTAIN_RESCHEDULE,
+        reason=resolution.reason,
+        question="Select the interview to reschedule, treat this as new, or ignore.",
+        allowed_choices=(
+            *tuple(str(value) for value in resolution.candidate_event_ids),
+            "treat_as_new",
+            "ignore",
+        ),
     )
 
 
@@ -244,7 +296,7 @@ def _next_review_request(
     ):
         reason = "extraction_needs_review"
         if reason not in reviewed_reasons:
-            return _application_review(reason, result)
+            return _extraction_review(reason)
     company = result.company
     if company is not None and company.company_id is None:
         reason = f"company_{company.status}"
@@ -281,6 +333,7 @@ async def validate_extraction(
             "status": ProcessingRunStatus.NEEDS_REVIEW.value,
             "validation_errors": errors,
             "review_request": review.model_dump(mode="json"),
+            "review_resume_stage": stage.value,
         }
     return {
         "current_stage": stage.value,
@@ -305,7 +358,14 @@ def route_after_validation(
 async def request_review(
     state: RecruitmentGraphState,
     runtime: Runtime[RecruitmentGraphContext],
-) -> Command[Literal["validate_extraction", "mark_ignored"]]:
+) -> Command[
+    Literal[
+        "validate_extraction",
+        "resolve_application",
+        "resolve_existing_event",
+        "mark_ignored",
+    ]
+]:
     stage = WorkflowStage.REQUEST_REVIEW
     request = ReviewRequest.model_validate(state["review_request"])
     item = ReviewItem.create(
@@ -351,9 +411,74 @@ async def request_review(
     }
     if decision.choice == "ignore":
         return Command(goto="mark_ignored", update=update)
-    if request.review_type is ReviewType.APPLICATION_AMBIGUITY:
-        update["application_id"] = decision.choice
-    return Command(goto="validate_extraction", update=update)
+    resume_stage = WorkflowStage(
+        state.get("review_resume_stage", WorkflowStage.VALIDATE_EXTRACTION.value)
+    )
+    if request.review_type is ReviewType.TIMEZONE_AMBIGUITY:
+        update["reviewed_timezone"] = (
+            decision.override_value if decision.choice == "other" else decision.choice
+        )
+    elif request.review_type is ReviewType.APPLICATION_AMBIGUITY:
+        if request.reason == "extraction_needs_review":
+            pass
+        elif resume_stage is WorkflowStage.VALIDATE_EXTRACTION:
+            if decision.choice == "create_new":
+                update["force_create_application"] = True
+            else:
+                update["reviewed_company_id"] = decision.choice
+        elif decision.choice == "create_new":
+            update["force_create_application"] = True
+        else:
+            update["selected_application_id"] = decision.choice
+    elif request.review_type is ReviewType.UNCERTAIN_RESCHEDULE:
+        if decision.choice == "treat_as_new":
+            update["treat_reschedule_as_new"] = True
+        else:
+            update["selected_event_id"] = decision.choice
+
+    destination: Literal[
+        "validate_extraction", "resolve_application", "resolve_existing_event"
+    ]
+    if resume_stage is WorkflowStage.VALIDATE_EXTRACTION:
+        destination = "validate_extraction"
+    elif resume_stage is WorkflowStage.RESOLVE_APPLICATION:
+        destination = "resolve_application"
+    elif resume_stage is WorkflowStage.RESOLVE_EXISTING_EVENT:
+        destination = "resolve_existing_event"
+    else:
+        raise ValueError("review resume stage is not supported")
+    return Command(goto=destination, update=update)
+
+
+def _domain_evidence(state: RecruitmentGraphState) -> RecruitmentEvidence:
+    result = WorkflowExtractionResult.model_validate(state["extraction_result"])
+    extraction = result.extraction
+    reviewed_company_id = state.get("reviewed_company_id")
+    company_id = (
+        UUID(reviewed_company_id)
+        if reviewed_company_id is not None
+        else None if result.company is None else result.company.company_id
+    )
+    timezone = state.get("reviewed_timezone")
+    if timezone is None and extraction.timezone_explicit:
+        timezone = extraction.timezone_text
+    return RecruitmentEvidence(
+        source_email_id=_source_email_id(state),
+        company_id=company_id,
+        raw_company_name=extraction.company_raw,
+        role_name=extraction.role_raw,
+        role_normalized=None if result.role is None else result.role.normalized_name,
+        event_type=extraction.event_type,
+        interview_round=extraction.interview_round,
+        action_required=extraction.action_required,
+        action_text=extraction.action_text,
+        action_link_ref=extraction.action_link_ref,
+        event_datetime=extraction.event_datetime,
+        deadline=extraction.deadline,
+        timezone=timezone,
+        source_datetime_text=extraction.source_datetime_text,
+        source_deadline_text=extraction.source_deadline_text,
+    )
 
 
 async def resolve_application(
@@ -362,7 +487,40 @@ async def resolve_application(
 ) -> dict[str, object]:
     stage = WorkflowStage.RESOLVE_APPLICATION
     await _advance(state, runtime, stage)
-    return {"current_stage": stage.value, "application_id": state.get("application_id")}
+    selected = state.get("selected_application_id")
+    resolution = await runtime.context.domain.resolve_application(
+        _domain_evidence(state),
+        selected_application_id=None if selected is None else UUID(selected),
+        force_create=state.get("force_create_application", False),
+    )
+    update: dict[str, object] = {
+        "current_stage": stage.value,
+        "application_resolution": resolution.model_dump(mode="json"),
+        "application_id": (
+            None if resolution.application_id is None else str(resolution.application_id)
+        ),
+    }
+    if resolution.kind is ApplicationResolutionKind.REVIEW:
+        update.update(
+            {
+                "status": ProcessingRunStatus.NEEDS_REVIEW.value,
+                "review_request": _application_resolution_review(resolution).model_dump(
+                    mode="json"
+                ),
+                "review_resume_stage": stage.value,
+            }
+        )
+    else:
+        update["status"] = ProcessingRunStatus.RUNNING.value
+    return update
+
+
+def route_after_application_resolution(
+    state: RecruitmentGraphState,
+) -> Literal["request_review", "resolve_existing_event"]:
+    if ProcessingRunStatus(state["status"]) is ProcessingRunStatus.NEEDS_REVIEW:
+        return "request_review"
+    return "resolve_existing_event"
 
 
 async def resolve_existing_event(
@@ -371,7 +529,38 @@ async def resolve_existing_event(
 ) -> dict[str, object]:
     stage = WorkflowStage.RESOLVE_EXISTING_EVENT
     await _advance(state, runtime, stage)
-    return {"current_stage": stage.value, "event_id": None}
+    application = ApplicationResolution.model_validate(state["application_resolution"])
+    selected = state.get("selected_event_id")
+    resolution = await runtime.context.domain.resolve_event(
+        _domain_evidence(state),
+        application,
+        selected_event_id=None if selected is None else UUID(selected),
+        treat_as_new=state.get("treat_reschedule_as_new", False),
+    )
+    update: dict[str, object] = {
+        "current_stage": stage.value,
+        "event_resolution": resolution.model_dump(mode="json"),
+        "event_id": None if resolution.event_id is None else str(resolution.event_id),
+    }
+    if resolution.kind is EventResolutionKind.REVIEW:
+        update.update(
+            {
+                "status": ProcessingRunStatus.NEEDS_REVIEW.value,
+                "review_request": _event_resolution_review(resolution).model_dump(mode="json"),
+                "review_resume_stage": stage.value,
+            }
+        )
+    else:
+        update["status"] = ProcessingRunStatus.RUNNING.value
+    return update
+
+
+def route_after_event_resolution(
+    state: RecruitmentGraphState,
+) -> Literal["request_review", "plan_state_transition"]:
+    if ProcessingRunStatus(state["status"]) is ProcessingRunStatus.NEEDS_REVIEW:
+        return "request_review"
+    return "plan_state_transition"
 
 
 async def plan_state_transition(
@@ -380,17 +569,34 @@ async def plan_state_transition(
 ) -> dict[str, object]:
     stage = WorkflowStage.PLAN_STATE_TRANSITION
     await _advance(state, runtime, stage)
-    return {"current_stage": stage.value, "action_item_ids": []}
+    plan = runtime.context.domain.plan_transition(
+        _domain_evidence(state),
+        ApplicationResolution.model_validate(state["application_resolution"]),
+        EventResolution.model_validate(state["event_resolution"]),
+    )
+    return {
+        "current_stage": stage.value,
+        "transition_plan": plan.model_dump(mode="json"),
+    }
 
 
 async def persist_domain_changes(
     state: RecruitmentGraphState,
     runtime: Runtime[RecruitmentGraphContext],
 ) -> dict[str, object]:
-    """Phase 6 placeholder: deliberately performs no domain mutation."""
     stage = WorkflowStage.PERSIST_DOMAIN_CHANGES
     await _advance(state, runtime, stage)
-    return {"current_stage": stage.value}
+    result = await runtime.context.domain.persist(
+        DomainTransitionPlan.model_validate(state["transition_plan"])
+    )
+    return {
+        "current_stage": stage.value,
+        "application_id": (
+            None if result.application_id is None else str(result.application_id)
+        ),
+        "event_id": None if result.event_id is None else str(result.event_id),
+        "action_item_ids": [str(value) for value in result.action_item_ids],
+    }
 
 
 async def sync_calendar_placeholder(

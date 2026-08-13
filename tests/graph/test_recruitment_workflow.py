@@ -8,7 +8,15 @@ from uuid import UUID
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
+from recruitment_agent.application.domain_processing import RecruitmentDomainService
+from recruitment_agent.domain.enums import ApplicationStatus, EventStatus, RecruitmentEventType
 from recruitment_agent.domain.ports import Clock
+from recruitment_agent.domain.processing import (
+    ApplicationSnapshot,
+    DomainMutationResult,
+    DomainTransitionPlan,
+    EventSnapshot,
+)
 from recruitment_agent.extraction.models import (
     ExtractionIssueCode,
     ExtractionIssueSeverity,
@@ -44,6 +52,10 @@ SOURCE_EMAIL_ID = UUID("00000000-0000-0000-0000-000000000502")
 ACCOUNT_ID = UUID("00000000-0000-0000-0000-000000000503")
 COMPANY_ID = UUID("00000000-0000-0000-0000-000000000504")
 OTHER_COMPANY_ID = UUID("00000000-0000-0000-0000-000000000505")
+APPLICATION_ID = UUID("00000000-0000-0000-0000-000000000506")
+OTHER_APPLICATION_ID = UUID("00000000-0000-0000-0000-000000000507")
+EVENT_ID = UUID("00000000-0000-0000-0000-000000000508")
+OTHER_EVENT_ID = UUID("00000000-0000-0000-0000-000000000509")
 NOW = datetime(2026, 8, 13, 18, tzinfo=UTC)
 
 
@@ -176,6 +188,84 @@ class MismatchedSourcePersistence(FakeWorkflowPersistence):
         )
 
 
+class FakeDomainStore:
+    def __init__(
+        self,
+        *,
+        linked: ApplicationSnapshot | None = None,
+        applications: tuple[ApplicationSnapshot, ...] = (),
+        events: tuple[EventSnapshot, ...] = (),
+    ) -> None:
+        self.linked = linked
+        self.applications = applications
+        self.events = events
+        self.plans: list[DomainTransitionPlan] = []
+
+    async def application_for_source_email(
+        self,
+        source_email_id: UUID,
+    ) -> ApplicationSnapshot | None:
+        del source_email_id
+        return self.linked
+
+    async def find_open_applications(
+        self,
+        *,
+        company_id: UUID,
+        role_normalized: str | None,
+    ) -> tuple[ApplicationSnapshot, ...]:
+        return tuple(
+            item
+            for item in self.applications
+            if item.company_id == company_id
+            and (role_normalized is None or item.role_normalized == role_normalized)
+        )
+
+    async def find_event_by_fingerprint(
+        self,
+        *,
+        application_id: UUID,
+        semantic_fingerprint: str,
+    ) -> EventSnapshot | None:
+        return next(
+            (
+                item
+                for item in self.events
+                if item.application_id == application_id
+                and item.semantic_fingerprint == semantic_fingerprint
+            ),
+            None,
+        )
+
+    async def list_active_interviews(
+        self,
+        application_id: UUID,
+    ) -> tuple[EventSnapshot, ...]:
+        return tuple(item for item in self.events if item.application_id == application_id)
+
+    async def apply_transition(
+        self,
+        plan: DomainTransitionPlan,
+    ) -> DomainMutationResult:
+        self.plans.append(plan)
+        if not plan.mutations_allowed:
+            return DomainMutationResult(
+                application_id=None if plan.create_application else plan.application_id,
+                event_id=None,
+                action_item_ids=(),
+                changed=False,
+                no_mutation_reason=plan.no_mutation_reason,
+            )
+        return DomainMutationResult(
+            application_id=plan.application_id,
+            event_id=plan.event.event_id,
+            action_item_ids=()
+            if plan.action_item is None
+            else (plan.action_item.id,),
+            changed=True,
+        )
+
+
 def _fixture(name: str) -> dict[str, object]:
     return json.loads(
         Path(f"tests/fixtures/extraction/{name}.json").read_text(encoding="utf-8")
@@ -258,6 +348,7 @@ def _runner(
     persistence: FakeWorkflowPersistence,
     *,
     checkpointer: InMemorySaver | None = None,
+    domain_store: FakeDomainStore | None = None,
 ) -> RecruitmentWorkflowRunner:
     memory = checkpointer or InMemorySaver()
     graph = build_recruitment_graph(checkpointer=memory)
@@ -265,6 +356,7 @@ def _runner(
         graph=graph,
         context=RecruitmentGraphContext(
             activities=activities,
+            domain=RecruitmentDomainService(domain_store or FakeDomainStore()),
             persistence=persistence,
             calendar=NoOpCalendarSync(),
             clock=FixedClock(),
@@ -281,7 +373,7 @@ def _request() -> WorkflowStartRequest:
 
 
 @pytest.mark.asyncio
-async def test_happy_path_runs_every_phase_five_placeholder_without_side_effects() -> None:
+async def test_happy_path_persists_phase_six_domain_plan() -> None:
     persistence = FakeWorkflowPersistence()
     activities = FakeActivities(prepared=_prepared(), extraction=_result())
 
@@ -289,9 +381,9 @@ async def test_happy_path_runs_every_phase_five_placeholder_without_side_effects
 
     assert outcome.state["status"] == ProcessingRunStatus.COMPLETED.value
     assert not outcome.interrupted
-    assert outcome.state["application_id"] is None
-    assert outcome.state["event_id"] is None
-    assert outcome.state["action_item_ids"] == []
+    assert outcome.state["application_id"] is not None
+    assert outcome.state["event_id"] is not None
+    assert len(outcome.state["action_item_ids"]) == 1
     assert outcome.state["calendar_operation"] == {
         "operation": "none",
         "reason": "phase_7_not_implemented",
@@ -401,7 +493,7 @@ async def test_timezone_interrupt_rejects_invalid_choice_then_resumes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_application_ambiguity_interrupt_can_select_reviewed_candidate() -> None:
+async def test_company_identity_ambiguity_can_select_reviewed_candidate() -> None:
     persistence = FakeWorkflowPersistence()
     ambiguous = _result(
         company_status="ambiguous",
@@ -421,7 +513,89 @@ async def test_application_ambiguity_interrupt_can_select_reviewed_candidate() -
 
     assert interrupted.interrupt_payloads[0]["review_type"] == "APPLICATION_AMBIGUITY"
     assert str(COMPANY_ID) in interrupted.interrupt_payloads[0]["allowed_choices"]
-    assert resumed.state["application_id"] == str(COMPANY_ID)
+    assert resumed.state["application_id"] != str(COMPANY_ID)
+    assert resumed.state["application_id"] is not None
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_application_ambiguity_resumes_with_selected_application() -> None:
+    persistence = FakeWorkflowPersistence()
+    candidates = (
+        ApplicationSnapshot(
+            id=APPLICATION_ID,
+            company_id=COMPANY_ID,
+            role_normalized="graduate engineer",
+            status=ApplicationStatus.APPLIED,
+            version=1,
+        ),
+        ApplicationSnapshot(
+            id=OTHER_APPLICATION_ID,
+            company_id=COMPANY_ID,
+            role_normalized="graduate engineer",
+            status=ApplicationStatus.APPLIED,
+            version=1,
+        ),
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=_result()),
+        persistence,
+        domain_store=FakeDomainStore(applications=candidates),
+    )
+
+    interrupted = await runner.start(_request())
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice=str(APPLICATION_ID)),
+    )
+
+    assert interrupted.interrupt_payloads[0]["review_type"] == "APPLICATION_AMBIGUITY"
+    assert str(APPLICATION_ID) in interrupted.interrupt_payloads[0]["allowed_choices"]
+    assert resumed.state["application_id"] == str(APPLICATION_ID)
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_uncertain_reschedule_resumes_with_selected_existing_event() -> None:
+    persistence = FakeWorkflowPersistence()
+    application = ApplicationSnapshot(
+        id=APPLICATION_ID,
+        company_id=COMPANY_ID,
+        role_normalized="backend developer",
+        status=ApplicationStatus.INTERVIEW_SCHEDULED,
+        version=2,
+    )
+    events = tuple(
+        EventSnapshot(
+            id=event_id,
+            application_id=APPLICATION_ID,
+            type=RecruitmentEventType.INTERVIEW,
+            status=EventStatus.ACTIVE,
+            round="second interview",
+            starts_at=datetime(2026, 8, 20, 13, tzinfo=UTC),
+            deadline_at=None,
+            timezone="BST",
+            source_datetime_text="20 August 2026 at 14:00 BST",
+            semantic_fingerprint=f"fingerprint-{index}",
+        )
+        for index, event_id in enumerate((EVENT_ID, OTHER_EVENT_ID), start=1)
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=_result("reschedule")),
+        persistence,
+        domain_store=FakeDomainStore(linked=application, events=events),
+    )
+
+    interrupted = await runner.start(_request())
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice=str(EVENT_ID)),
+    )
+
+    assert interrupted.interrupt_payloads[0]["review_type"] == "UNCERTAIN_RESCHEDULE"
+    assert resumed.state["event_id"] == str(EVENT_ID)
     assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
 
 

@@ -10,6 +10,7 @@ from alembic.config import Config
 from sqlalchemy import func, select, text
 from testcontainers.community.postgres import PostgresContainer
 
+from recruitment_agent.application.domain_processing import RecruitmentDomainService
 from recruitment_agent.domain.mail import SourceEmailProcessingStatus
 from recruitment_agent.extraction.models import (
     ExtractionIssueCode,
@@ -33,6 +34,7 @@ from recruitment_agent.graph.contracts import (
 from recruitment_agent.graph.ports import NoOpCalendarSync
 from recruitment_agent.graph.postgres import open_postgres_checkpointer
 from recruitment_agent.graph.runner import RecruitmentWorkflowRunner, WorkflowStartRequest
+from recruitment_agent.persistence.domain_processing import SqlAlchemyRecruitmentDomainStore
 from recruitment_agent.persistence.models import (
     LlmExtractionModel,
     MicrosoftConnectionModel,
@@ -166,6 +168,9 @@ async def test_postgres_checkpoint_interrupt_survives_reconstruction() -> None:
         )
         context = RecruitmentGraphContext(
             activities=activities,
+            domain=RecruitmentDomainService(
+                SqlAlchemyRecruitmentDomainStore(session_factory)
+            ),
             persistence=persistence,
             calendar=NoOpCalendarSync(),
             clock=FixedClock(),

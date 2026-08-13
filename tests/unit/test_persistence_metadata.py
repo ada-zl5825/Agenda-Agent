@@ -67,6 +67,22 @@ def test_action_items_reference_secure_links_without_cascading_deletes() -> None
     assert secure_link_foreign_key.ondelete == "SET NULL"
 
 
+def test_phase_six_mutations_reference_their_source_email_evidence() -> None:
+    history = Base.metadata.tables["app.application_status_history"]
+    event_history = Base.metadata.tables["app.event_history"]
+    actions = Base.metadata.tables["app.action_items"]
+
+    application_source = next(iter(history.c.source_email_id.foreign_keys))
+    event_source = next(iter(event_history.c.source_email_id.foreign_keys))
+    action_source = next(iter(actions.c.source_email_id.foreign_keys))
+    assert application_source.target_fullname == "app.source_emails.id"
+    assert application_source.ondelete == "SET NULL"
+    assert event_source.target_fullname == "app.source_emails.id"
+    assert event_source.ondelete == "SET NULL"
+    assert action_source.target_fullname == "app.source_emails.id"
+    assert action_source.ondelete == "CASCADE"
+
+
 def test_company_resolution_audit_references_email_and_reviewed_candidates() -> None:
     attempts = Base.metadata.tables["app.company_resolution_attempts"]
     candidates = Base.metadata.tables["app.company_resolution_candidates"]

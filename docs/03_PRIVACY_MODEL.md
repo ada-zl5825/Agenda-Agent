@@ -1,7 +1,7 @@
 # Privacy Model
 
 Phases 2 and 3 implement the deterministic privacy boundary. Phase 4 consumes only its safe output,
-and Phase 5 checkpoints only the reduced privacy-safe workflow state.
+and Phases 5/6 checkpoint only the reduced privacy-safe workflow state and typed domain intent.
 
 ## Processing order
 
@@ -54,6 +54,10 @@ opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`
 - Phase 5 graph context carries live service objects outside checkpoint state. Checkpoints may hold
   sanitized text, opaque link refs, database IDs, structured extraction/validation evidence and
   processing metadata only.
+- Phase 6 resolution and transition plans may hold sanitized structured evidence, deterministic
+  fingerprints, database IDs, and opaque link refs. They never hold encrypted-link plaintext,
+  OAuth credentials, raw HTML/body, or attachments. Persistence resolves an opaque ref directly to
+  its encrypted `secure_links` row inside the domain transaction.
 - `processing_runs`, `llm_extractions` and `review_items` never persist raw HTML/body, attachments,
   prompt/completion text, OAuth credentials, decrypted URLs or complete checkpoint payloads.
 - Interrupt payloads contain only a review ID, stable reason/type, typed question and allowed

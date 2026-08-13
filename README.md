@@ -167,5 +167,21 @@ $env:RUN_POSTGRES_INTEGRATION="1"
 uv run pytest -m integration
 ```
 
+## Phase 6 implemented
+
+- Deterministic application resolution uses canonical company IDs, normalized roles, source-email
+  links, and explicit Review decisions for ambiguous candidates.
+- Semantic fingerprints and action idempotency keys prevent duplicate applications, events, and
+  action items across retries.
+- Assessment, interview, offer, and rejection evidence drives validated Application transitions
+  with append-only status history.
+- Interview reschedules update the resolved active event in place and preserve the previous values
+  in event history; uncertain targets interrupt for Review.
+- Domain writes are revalidated and applied atomically in PostgreSQL. Required unresolved time
+  evidence yields a zero-mutation plan.
+- Secure destinations remain encrypted; Phase 6 stores only the matching `secure_link_id` and keeps
+  opaque refs in graph checkpoints.
+- Alembic head is `20260813_0007`. Phase 7 Calendar synchronization remains a typed no-op.
+
 完整边界与后续 phase 见
 [最终技术设计](docs/01_FINAL_TECHNICAL_DESIGN.md) 和 [AGENTS.md](AGENTS.md)。

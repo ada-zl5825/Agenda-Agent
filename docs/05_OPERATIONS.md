@@ -1,4 +1,4 @@
-# Operations through Phase 5
+# Operations through Phase 6
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -56,6 +56,26 @@ model credential, checkpointer and SQLAlchemy engine after each invocation.
 `resume_mail_processing_job` resumes one typed Review decision. Phase 5 intentionally does not add a
 second timer that selects pending emails and does not expose a Review mutation route; those require
 the later scheduling and authenticated graphical Review phases.
+
+## Phase 6 domain state machine
+
+Phase 6 adds migration `20260813_0007`. It links application-status history, event history, and
+action items to their source-email evidence with explicit delete behavior. Apply it before enabling
+Phase 6 processing:
+
+```text
+uv run alembic upgrade head
+```
+
+The production graph resolves and plans in read-only nodes, then writes the Application aggregate,
+RecruitmentEvent, ActionItem, and histories in one PostgreSQL transaction. PostgreSQL advisory
+transaction locks serialize concurrent creation for one canonical company/role identity; unique
+semantic fingerprints and action idempotency keys make retries safe. Do not manually repair these
+tables or bypass the workflow with direct SQL. Required but unresolved interview time evidence must
+remain in Review and produces no domain write.
+
+Phase 6 still performs no Calendar operation, sends no Daily Brief, and does not expose the future
+authenticated graphical Review page.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:

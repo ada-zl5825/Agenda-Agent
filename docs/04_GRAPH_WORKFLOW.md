@@ -20,7 +20,9 @@ load_source_email
                -> finalize_processing            (invalid)
                -> request_review                 (ambiguous)
                -> resolve_application            (valid)
+                  -> request_review               (multiple/unresolved applications)
                   -> resolve_existing_event
+                     -> request_review            (uncertain reschedule)
                   -> plan_state_transition
                   -> persist_domain_changes
                   -> sync_calendar_placeholder
@@ -32,8 +34,10 @@ activity. The activity returns only sanitized text, opaque link refs and safe me
 first of those values can be checkpointed. Separate graph nodes retain the required explicit
 workflow stages and validate that safe boundary; they never checkpoint the transient Graph body.
 
-Phase 6 domain nodes and the Phase 7 calendar node are typed no-ops in Phase 5. They make no domain
-or external side effect.
+The Phase 6 domain nodes now call a provider-neutral service. Resolution nodes are read-only and
+checkpoint only typed IDs/candidates. `plan_state_transition` creates an intent; only
+`persist_domain_changes` may write domain state, and it does so through one transaction that
+revalidates source/application/event identities. The Phase 7 calendar node remains a typed no-op.
 
 ## Persistence and resume contract
 
@@ -46,12 +50,15 @@ or external side effect.
 - `TIMEZONE_AMBIGUITY`, `APPLICATION_AMBIGUITY` and `DATETIME_CONFLICT` pause through
   `interrupt()`. Resume uses a typed `ReviewDecision`; invalid/stale decisions do not advance the
   workflow.
+- `UNCERTAIN_RESCHEDULE` pauses when zero or multiple active interviews could be the target. Resume
+  may select one candidate, explicitly treat the evidence as a new interview, or ignore it.
 - Side effects before an interrupt are idempotent because an interrupted node restarts when
   resumed.
 
 The production composition functions `run_mail_processing_job` and
 `resume_mail_processing_job` reconstruct all adapters and the graph around the same PostgreSQL
-checkpointer. Selecting pending mail and exposing the graphical Review command are later phases.
+checkpointer. Phase 6 composition also supplies the atomic PostgreSQL domain store. Selecting
+pending mail and exposing the graphical Review command are later phases.
 
 ## Daily Brief review navigation contract
 
