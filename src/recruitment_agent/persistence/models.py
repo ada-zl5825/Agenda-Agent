@@ -271,6 +271,71 @@ class CompanyDomainModel(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class CompanyResolutionAttemptModel(Base):
+    """Append-only, idempotent evidence for a Phase 4.5 resolution result."""
+
+    __tablename__ = "company_resolution_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "raw_company_name IS NULL OR length(btrim(raw_company_name)) > 0",
+            name="raw_company_name_not_empty",
+        ),
+        CheckConstraint(
+            "matched_value IS NULL OR length(btrim(matched_value)) > 0",
+            name="matched_value_not_empty",
+        ),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
+        CheckConstraint(
+            "role_raw IS NULL OR length(btrim(role_raw)) > 0",
+            name="role_raw_not_empty",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    source_email_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.source_emails.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sender_domain: Mapped[str | None] = mapped_column(String(255))
+    raw_company_name: Mapped[str | None] = mapped_column(Text)
+    company_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.companies.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    method: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    matched_value: Mapped[str | None] = mapped_column(String(255))
+    role_raw: Mapped[str | None] = mapped_column(Text)
+    role_normalized: Mapped[str | None] = mapped_column(Text)
+    role_family: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class CompanyResolutionCandidateModel(Base):
+    """Canonical candidates retained for an ambiguous resolution audit."""
+
+    __tablename__ = "company_resolution_candidates"
+
+    resolution_attempt_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.company_resolution_attempts.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.companies.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+
+
 class ApplicationModel(TimestampMixin, Base):
     __tablename__ = "applications"
     __table_args__ = (

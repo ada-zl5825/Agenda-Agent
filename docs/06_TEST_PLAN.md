@@ -1,4 +1,4 @@
-# Test Plan through Phase 4
+# Test Plan through Phase 4.5
 
 The automated suite covers:
 
@@ -24,6 +24,11 @@ The automated suite covers:
 - company/domain normalization and entity invariants;
 - exact canonical-name, alias and sender-domain company resolution;
 - unresolved, non-fuzzy and ambiguous company outcomes;
+- cross-evidence name/domain conflict detection without silent precedence;
+- company resolution result fields, raw evidence preservation and confidence provenance;
+- lightweight role normalization with raw role preservation and coarse families;
+- Phase 4 `VALID` and `NEEDS_REVIEW` output flowing into Phase 4.5 while `INVALID` output is rejected;
+- stable retry-idempotent resolution audit IDs and ambiguous candidate persistence;
 - stable parent-child seed IDs and repeatable catalog seeding;
 - `Application.company_id` identity with unchanged `raw_company_name` evidence; and
 - Phase 3.5 migration preservation plus PostgreSQL repository lookups;
@@ -40,8 +45,8 @@ The automated suite covers:
 - managed-identity Azure OpenAI deployment settings with no API key.
 
 The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
-They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency and
-legacy application company-name migration.
+They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency,
+legacy application company-name migration and Phase 4.5 audit/candidate idempotency.
 
 The Phase 4 contract suite is provider-independent and runs without network access or Azure
 credentials. It validates saved structured outputs against the current Pydantic schema and the

@@ -1,7 +1,7 @@
 # Recruitment Inbox Agent
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1、Phase 2、Phase 3、Phase 3.5 与 Phase 4。
+Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4 与 Phase 4.5。
 
 ## Phase 1 已实现
 
@@ -65,7 +65,19 @@ Seed 未覆盖且无法通过已审核域名命中的公司会保持 `UNRESOLVED
 - Azure OpenAI 使用 Function managed identity，无 API key；调用带超时和有界重试
 
 Phase 4 是无状态语义提取层，不写数据库、不解析 canonical company、不创建日历或发送
-邮件，也不新增 Alembic 迁移。数据库 head 仍为 Phase 3.5 的 `20260813_0004`。
+邮件。Phase 4 本身不新增 Alembic 迁移。
+
+## Phase 4.5 已实现
+
+- 将 Phase 4 的 `company_raw`、`role_raw` 直接接入确定性实体解析，不再调用 LLM 判断公司
+- 公司规范名、别名与发件域名均使用 exact match，并保留匹配值与置信度
+- 名称证据与域名证据指向不同公司时返回 `AMBIGUOUS`，未知公司返回 `UNRESOLVED`
+- 轻量 `RoleNormalizer` 保留原始职位名，并生成规范名与辅助 `role_family`
+- 以稳定 ID 幂等保存解析尝试；冲突候选单独持久化，支持后续 Review 审计
+- `INVALID` 提取结果不会进入解析；`NEEDS_REVIEW` 只记录确定性证据，不授权业务变更
+
+Phase 4.5 不匹配 Application、不引入 LangGraph、不创建日历、不发信，也不使用模糊匹配、
+向量搜索、外部搜索或 LLM 公司规范化。数据库 head 为 `20260813_0005`。
 
 ## 本地启动
 

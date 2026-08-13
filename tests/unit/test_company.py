@@ -12,6 +12,7 @@ from recruitment_agent.domain.company import (
     CompanyDomain,
     CompanyDomainSeed,
     CompanyEntityType,
+    CompanyResolutionMatch,
     CompanyResolutionMethod,
     CompanyResolutionStatus,
     CompanySeed,
@@ -27,6 +28,7 @@ from recruitment_agent.domain.company_seed import (
     TIKTOK_ID,
 )
 from recruitment_agent.domain.errors import DomainValidationError
+from recruitment_agent.domain.role import RoleFamily, RoleNormalizer
 
 
 def company(name: str, *, company_id: UUID | None = None) -> Company:
@@ -46,9 +48,9 @@ def company(name: str, *, company_id: UUID | None = None) -> Company:
 class InMemoryCompanyRepository:
     def __init__(self) -> None:
         self.companies: dict[UUID, Company] = {}
-        self.canonical: dict[str, list[Company]] = {}
-        self.aliases: dict[str, list[Company]] = {}
-        self.domains: dict[str, list[Company]] = {}
+        self.canonical: dict[str, list[CompanyResolutionMatch]] = {}
+        self.aliases: dict[str, list[CompanyResolutionMatch]] = {}
+        self.domains: dict[str, list[CompanyResolutionMatch]] = {}
 
     async def get(self, company_id: UUID) -> Company | None:
         return self.companies.get(company_id)
@@ -56,16 +58,16 @@ class InMemoryCompanyRepository:
     async def find_by_normalized_canonical_name(
         self,
         normalized_name: str,
-    ) -> tuple[Company, ...]:
+    ) -> tuple[CompanyResolutionMatch, ...]:
         return tuple(self.canonical.get(normalized_name, ()))
 
     async def find_by_normalized_alias(
         self,
         normalized_alias: str,
-    ) -> tuple[Company, ...]:
+    ) -> tuple[CompanyResolutionMatch, ...]:
         return tuple(self.aliases.get(normalized_alias, ()))
 
-    async def find_by_domain(self, domain: str) -> tuple[Company, ...]:
+    async def find_by_domain(self, domain: str) -> tuple[CompanyResolutionMatch, ...]:
         return tuple(self.domains.get(domain, ()))
 
     async def upsert_seed(self, seed: CompanySeed) -> Company:
@@ -73,15 +75,31 @@ class InMemoryCompanyRepository:
         stored = existing or company(seed.canonical_name, company_id=seed.id)
         if existing is None:
             self.companies[stored.id] = stored
-            self.canonical.setdefault(stored.normalized_canonical_name, []).append(stored)
+            self.canonical.setdefault(stored.normalized_canonical_name, []).append(
+                CompanyResolutionMatch(
+                    company_id=stored.id,
+                    matched_value=stored.normalized_canonical_name,
+                    confidence=1.0,
+                )
+            )
         for alias in seed.aliases:
             matches = self.aliases.setdefault(alias.normalized_alias, [])
-            if stored not in matches:
-                matches.append(stored)
+            match = CompanyResolutionMatch(
+                company_id=stored.id,
+                matched_value=alias.normalized_alias,
+                confidence=alias.confidence,
+            )
+            if match not in matches:
+                matches.append(match)
         for domain in seed.domains:
             matches = self.domains.setdefault(domain.domain, [])
-            if stored not in matches:
-                matches.append(stored)
+            match = CompanyResolutionMatch(
+                company_id=stored.id,
+                matched_value=domain.domain,
+                confidence=domain.confidence,
+            )
+            if match not in matches:
+                matches.append(match)
         return stored
 
 
@@ -155,15 +173,14 @@ async def test_resolver_uses_canonical_then_alias_then_domain_exact_matches() ->
 
     assert seeded.processed == len(COMMON_COMPANY_SEEDS)
     assert canonical.status is CompanyResolutionStatus.RESOLVED
-    assert canonical.method is CompanyResolutionMethod.CANONICAL_NAME
-    assert canonical.company is not None
-    assert canonical.company.id == BYTEDANCE_ID
-    assert alias.method is CompanyResolutionMethod.ALIAS
-    assert alias.company is not None
-    assert alias.company.id == BYTEDANCE_ID
-    assert domain.method is CompanyResolutionMethod.SENDER_DOMAIN
-    assert domain.company is not None
-    assert domain.company.id == BYTEDANCE_ID
+    assert canonical.method is CompanyResolutionMethod.CANONICAL_EXACT
+    assert canonical.company_id == BYTEDANCE_ID
+    assert canonical.matched_value == "bytedance"
+    assert canonical.confidence == 1.0
+    assert alias.method is CompanyResolutionMethod.ALIAS_EXACT
+    assert alias.company_id == BYTEDANCE_ID
+    assert domain.method is CompanyResolutionMethod.DOMAIN_EXACT
+    assert domain.company_id == BYTEDANCE_ID
 
 
 @pytest.mark.asyncio
@@ -177,6 +194,9 @@ async def test_resolver_leaves_unknown_and_fuzzy_names_unresolved() -> None:
     invalid_domain = await resolver.resolve(company_raw=None, sender_domain="not a domain")
 
     assert unknown.status is CompanyResolutionStatus.UNRESOLVED
+    assert unknown.method is CompanyResolutionMethod.UNRESOLVED
+    assert unknown.raw_company_name == "Unknown Labs"
+    assert unknown.confidence == 0.0
     assert fuzzy.status is CompanyResolutionStatus.UNRESOLVED
     assert invalid_domain.status is CompanyResolutionStatus.UNRESOLVED
 
@@ -225,9 +245,8 @@ async def test_unknown_company_resolves_only_after_reviewed_seed_and_explicit_re
     )
 
     assert after_review.status is CompanyResolutionStatus.RESOLVED
-    assert after_review.method is CompanyResolutionMethod.ALIAS
-    assert after_review.company is not None
-    assert after_review.company.id == reviewed.id
+    assert after_review.method is CompanyResolutionMethod.ALIAS_EXACT
+    assert after_review.company_id == reviewed.id
 
 
 @pytest.mark.asyncio
@@ -235,8 +254,25 @@ async def test_resolver_returns_ambiguous_without_using_domain_to_guess() -> Non
     repository = InMemoryCompanyRepository()
     first = company("Example One")
     second = company("Example Two")
-    repository.aliases["example"] = [first, second]
-    repository.domains["one.example.com"] = [first]
+    repository.aliases["example"] = [
+        CompanyResolutionMatch(
+            company_id=first.id,
+            matched_value="example",
+            confidence=1.0,
+        ),
+        CompanyResolutionMatch(
+            company_id=second.id,
+            matched_value="example",
+            confidence=1.0,
+        ),
+    ]
+    repository.domains["one.example.com"] = [
+        CompanyResolutionMatch(
+            company_id=first.id,
+            matched_value="one.example.com",
+            confidence=1.0,
+        )
+    ]
 
     result = await CompanyResolver(repository).resolve(
         company_raw="Example",
@@ -244,9 +280,53 @@ async def test_resolver_returns_ambiguous_without_using_domain_to_guess() -> Non
     )
 
     assert result.status is CompanyResolutionStatus.AMBIGUOUS
-    assert result.method is CompanyResolutionMethod.ALIAS
-    assert result.company is None
+    assert result.method is CompanyResolutionMethod.AMBIGUOUS
+    assert result.company_id is None
     assert set(result.candidate_company_ids) == {first.id, second.id}
+
+
+@pytest.mark.asyncio
+async def test_resolver_marks_conflicting_name_and_domain_evidence_ambiguous() -> None:
+    repository = InMemoryCompanyRepository()
+    name_company = company("Tencent")
+    domain_company = company("Alibaba")
+    repository.aliases["tencent"] = [
+        CompanyResolutionMatch(
+            company_id=name_company.id,
+            matched_value="tencent",
+            confidence=0.95,
+        )
+    ]
+    repository.domains["alibaba.com"] = [
+        CompanyResolutionMatch(
+            company_id=domain_company.id,
+            matched_value="alibaba.com",
+            confidence=1.0,
+        )
+    ]
+
+    result = await CompanyResolver(repository).resolve(
+        company_raw="Tencent",
+        sender_domain="alibaba.com",
+    )
+
+    assert result.status is CompanyResolutionStatus.AMBIGUOUS
+    assert set(result.candidate_company_ids) == {name_company.id, domain_company.id}
+
+
+def test_role_normalizer_preserves_raw_name_and_classifies_lightweight_family() -> None:
+    backend = RoleNormalizer().normalize("  Senior Backend Engineer  ")
+    machine_learning = RoleNormalizer().normalize("机器学习算法工程师")
+    unknown = RoleNormalizer().normalize("Chief Happiness Officer")
+    missing = RoleNormalizer().normalize(None)
+
+    assert backend.raw_name == "  Senior Backend Engineer  "
+    assert backend.normalized_name == "senior backend engineer"
+    assert backend.family is RoleFamily.BACKEND
+    assert machine_learning.family is RoleFamily.MACHINE_LEARNING
+    assert unknown.family is RoleFamily.OTHER
+    assert missing.normalized_name is None
+    assert missing.family is None
 
 
 @pytest.mark.asyncio
