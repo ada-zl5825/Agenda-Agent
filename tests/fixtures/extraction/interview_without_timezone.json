@@ -1,0 +1,29 @@
+{
+  "scenario": "interview_without_timezone",
+  "received_at": "2026-08-13T09:00:00+01:00",
+  "allowed_link_refs": [],
+  "sanitized_text": "Subject: Interview invitation\n\nContoso invites you to interview for Data Analyst on 20 August 2026 at 14:00.",
+  "response": {
+    "relevant": true,
+    "company_raw": "Contoso",
+    "role_raw": "Data Analyst",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": "20 August 2026 at 14:00",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.85
+  },
+  "expected_status": "needs_review",
+  "expected_issues": ["datetime_unresolved", "timezone_ambiguous"]
+}

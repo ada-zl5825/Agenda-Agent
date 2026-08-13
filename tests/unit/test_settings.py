@@ -4,7 +4,12 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from recruitment_agent.config.settings import LinkEncryptionSettings, MicrosoftSettings, Settings
+from recruitment_agent.config.settings import (
+    AzureOpenAISettings,
+    LinkEncryptionSettings,
+    MicrosoftSettings,
+    Settings,
+)
 
 
 def test_settings_accept_phase_zero_configuration() -> None:
@@ -78,3 +83,30 @@ def test_link_encryption_settings_validate_key_vault_boundary() -> None:
             azure_key_vault_url="http://vault.example.test",
             link_encryption_key_secret_name="link-key",
         )
+
+
+def test_azure_openai_settings_are_safe_when_disabled() -> None:
+    settings = AzureOpenAISettings(llm_enabled=False)
+
+    assert settings.azure_openai_endpoint is None
+    assert settings.azure_openai_api_version == "2024-10-21"
+    assert settings.azure_openai_max_retry_attempts == 3
+
+
+def test_azure_openai_settings_require_enabled_boundary() -> None:
+    with pytest.raises(ValidationError, match="required when LLM_ENABLED=true"):
+        AzureOpenAISettings(llm_enabled=True)
+
+    with pytest.raises(ValidationError, match="must use HTTPS"):
+        AzureOpenAISettings(
+            llm_enabled=True,
+            azure_openai_endpoint="http://openai.example.test",
+            azure_openai_deployment="structured-model",
+        )
+
+    settings = AzureOpenAISettings(
+        llm_enabled=True,
+        azure_openai_endpoint="https://openai.example.test",
+        azure_openai_deployment="structured-model",
+    )
+    assert settings.azure_openai_deployment == "structured-model"

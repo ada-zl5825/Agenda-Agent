@@ -1,4 +1,4 @@
-# Domain Model through Phase 3.5
+# Domain Model through Phase 4
 
 `Application` remains the recruitment aggregate root. `RecruitmentEvent` and `ActionItem` belong to
 an application and use explicit status enums. Email and future model output are evidence, not domain
@@ -53,9 +53,9 @@ company_raw: str | None
 role_raw: str | None
 ```
 
-Both strings remain exactly as extracted. A future Phase 4 model may emit this evidence, but it may
-not choose a canonical company, write `company_id`, or mutate application state. Resolution remains
-a later deterministic application step.
+Both strings remain exactly as extracted. The Phase 4 model emits only this evidence; it cannot
+choose a canonical company, write `company_id`, or mutate application state. Resolution remains a
+later deterministic application step.
 
 Repository protocols live in the domain package. SQLAlchemy models and seed execution are separate
 persistence/composition concerns and never leak into the domain contracts.

@@ -7,7 +7,7 @@ from functools import lru_cache
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -184,3 +184,55 @@ class LinkEncryptionSettings(BaseSettings):
 def get_link_encryption_settings() -> LinkEncryptionSettings:
     """Load Key Vault configuration only at the secure-link boundary."""
     return LinkEncryptionSettings()
+
+
+class AzureOpenAISettings(BaseSettings):
+    """Phase 4 Azure OpenAI structured-extraction configuration."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    llm_enabled: bool = False
+    azure_openai_endpoint: AnyHttpUrl | None = None
+    azure_openai_deployment: str | None = None
+    azure_openai_api_version: str = "2024-10-21"
+    azure_openai_request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    azure_openai_max_retry_attempts: int = Field(default=3, ge=1, le=5)
+
+    @field_validator("azure_openai_endpoint")
+    @classmethod
+    def validate_openai_endpoint(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is not None and value.scheme != "https":
+            raise ValueError("AZURE_OPENAI_ENDPOINT must use HTTPS")
+        return value
+
+    @field_validator("azure_openai_deployment", "azure_openai_api_version")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def require_enabled_configuration(self) -> "AzureOpenAISettings":
+        if self.llm_enabled and (
+            self.azure_openai_endpoint is None or self.azure_openai_deployment is None
+        ):
+            raise ValueError(
+                "AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT are required "
+                "when LLM_ENABLED=true"
+            )
+        if self.azure_openai_api_version is None:
+            raise ValueError("AZURE_OPENAI_API_VERSION must not be empty")
+        return self
+
+
+@lru_cache(maxsize=1)
+def get_azure_openai_settings() -> AzureOpenAISettings:
+    """Load Phase 4 settings only at the model integration boundary."""
+    return AzureOpenAISettings()

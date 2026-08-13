@@ -1892,6 +1892,8 @@ id
 
 processing_run_id
 
+review_type
+
 reason
 
 question
@@ -1905,6 +1907,23 @@ resolution
 created_at
 resolved_at
 ```
+
+`review_type` 使用稳定枚举：
+
+```text
+TIMEZONE_AMBIGUITY
+APPLICATION_AMBIGUITY
+DATETIME_CONFLICT
+UNCERTAIN_RESCHEDULE
+UNSAFE_CALENDAR_UPDATE
+```
+
+`reason` 使用稳定 reason code，不保存原始邮件正文。`resolution` 是经过类型校验的结构化结果，
+并带 version / optimistic concurrency guard，保证重复提交或工作流恢复不会产生两次副作用。
+
+Review 页面所需内容使用 PostgreSQL 中的 `review_items`、`processing_runs`、`source_emails`、
+Application / Event / ActionItem 及 validated extraction 组合成 read model；不得为了页面方便把
+raw HTML、原始邮件正文、附件或解密后的 URL 复制到 `review_items`。
 
 ---
 
@@ -2044,6 +2063,79 @@ WAITING FOR RESULT
 NEEDS REVIEW
 ```
 
+## Daily Brief → Review 强制跳转规则
+
+`NEEDS REVIEW` 中的每一条记录必须对应一个未解决的 `review_item`，并渲染绝对链接：
+
+```text
+{PUBLIC_APP_BASE_URL}/reviews/{review_id}
+```
+
+该条目的主操作必须是：
+
+```text
+Open Review / 打开 Review
+```
+
+它必须打开经过认证的图形化 Review 详情页，不能跳到 JSON、原始邮件、Calendar 或动作链接，
+也不能在 Daily Brief 邮件内直接解决问题。链接仅在 path 中包含 opaque `review_id`；禁止把
+choice、resolution、email body、candidate ID、时间证据、OAuth token、action URL 或任意
+secret 放进 query string / fragment。
+
+未登录用户先完成 Microsoft 登录，再回到同一个受限 Review 路由。服务端必须校验当前账户
+拥有该 review。已解决的 review 仍显示只读结果和审计信息，不得再次恢复 workflow。
+
+对于 `NEEDS REVIEW` 条目，Daily Brief renderer 不解密 `SecureLink`。动作链接只能在普通、
+已验证的 ActionItem 上按既有 trusted rendering boundary 解析；Review 页面只显示 link ref、
+类型和域名，并在用户完成必要确认后由后续确定性流程决定是否提供动作。
+
+## 图形化 Review 页面字段契约
+
+`GET /reviews/{review_id}` 返回 HTML 图形化页面。页面按下面区域展示，空值显示“未提供”，
+不得用猜测值填充：
+
+| 区域 | 必须展示的字段 |
+|---|---|
+| Header | `review_id`、`review_type`、`status`、`reason_code`、`created_at`、待处理时长 |
+| Source email | 邮件主题、`sender_domain`、`received_at`、是否转发、`has_attachments`、`Open original email` |
+| Application | `application_id`（如已解析）、canonical company display name（如已解析）、`company_raw`、`role_raw`、当前 application status |
+| Extracted event | `event_type`、interview round、action summary、meeting platform、location |
+| Time evidence | `source_datetime_text`、`source_deadline_text`、normalized datetime/deadline、`timezone_explicit`、timezone text、datetime confidence |
+| Other confidence | company confidence、event confidence，以及触发 Review 的 validator findings |
+| Existing vs proposed | 当前持久化 Event / Application 值、建议的新值、逐字段差异；没有现有记录时明确显示“new” |
+| Candidate matches | application/event ambiguity 时，每个 candidate 的 ID、公司、岗位、状态、event type/round、时间、last activity |
+| Secure links | opaque ref、link type、domain；绝不在 HTML、DOM、日志或页面源代码中出现 plaintext destination |
+| Side-effect preview | Calendar / Application / Event / ActionItem 将执行、更新、跳过或被阻止的计划；Review 前保持 `blocked` |
+| Decision | deterministic question、允许的 choices、可选的 typed override 输入、`Resolve` 与 `Ignore` 操作 |
+| Resolution audit | 已解决时显示 selected choice、sanitized structured resolution、`resolved_at`、resumed/completed status；不显示 graph checkpoint payload |
+
+Source email 区域只显示上述元数据和经过 privacy sanitizer 的最小必要 evidence excerpts。
+禁止显示 raw HTML、完整原始正文、附件内容、个人邮箱/电话、candidate / passport / student ID、
+模型 prompt/completion、OAuth credential 或内部错误堆栈。需要更多上下文时，用户通过 Graph
+提供的 `outlook_web_link` 打开原始邮件；系统不复制原始正文到 Review 页面。
+
+不同 `review_type` 的决策控件必须固定：
+
+```text
+TIMEZONE_AMBIGUITY
+  → choose supported IANA timezone / typed IANA timezone / ignore
+
+APPLICATION_AMBIGUITY
+  → choose candidate application / create new application / ignore
+
+DATETIME_CONFLICT
+  → keep existing / accept proposed / enter explicit datetime + timezone / ignore
+
+UNCERTAIN_RESCHEDULE
+  → choose existing event / treat as new event / ignore
+
+UNSAFE_CALENDAR_UPDATE
+  → apply proposed update / skip calendar update / ignore
+```
+
+所有 typed override 都必须在服务端确定性校验；解决命令必须验证 review 仍为 `OPEN`、choice
+属于 `allowed_choices`，并以幂等方式恢复对应 LangGraph run。页面不得让 LLM 决定 choice。
+
 ---
 
 # 55. Daily Brief Example
@@ -2099,6 +2191,8 @@ Interview invitation
 
 Timezone not specified.
 Calendar event was NOT created.
+
+Open Review
 ```
 
 ---
@@ -2182,12 +2276,15 @@ GET /brief/today
 ## Reviews
 
 ```text
-GET /reviews
+GET /reviews                 authenticated graphical queue
 
-GET /reviews/{review_id}
+GET /reviews/{review_id}     authenticated graphical detail page
 
-POST /reviews/{review_id}/resolve
+POST /reviews/{review_id}/resolve   idempotent typed decision command
 ```
+
+`POST /resolve` 只接受同源页面提交的 typed payload，并使用 CSRF 防护与 optimistic concurrency。
+Daily Brief 中的 GET 链接永远不能产生副作用。
 
 ---
 
@@ -2518,6 +2615,7 @@ CALENDAR_AUTO_CREATE=true
 DAILY_BRIEF_ENABLED=true
 DAILY_BRIEF_RECIPIENT=
 DAILY_BRIEF_TIME=
+PUBLIC_APP_BASE_URL=
 
 LLM_ENABLED=true
 ```
@@ -3376,6 +3474,8 @@ secure link resolution
 
 original email links
 
+graphical Review page deep links
+
 Mail.Send
 
 Timer job
@@ -3719,6 +3819,10 @@ Daily Brief works
 Daily Brief contains action links
 
 Daily Brief contains original Outlook mail link
+
+Every NEEDS REVIEW item opens the authenticated graphical Review page
+
+Review page exposes only the documented safe read model and typed decisions
 
 Logs contain no sensitive content
 

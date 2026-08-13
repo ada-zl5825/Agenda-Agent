@@ -1,7 +1,7 @@
 # Recruitment Inbox Agent
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1、Phase 2、Phase 3 与 Phase 3.5。
+Phase 1、Phase 2、Phase 3、Phase 3.5 与 Phase 4。
 
 ## Phase 1 已实现
 
@@ -54,6 +54,19 @@ Seed 未覆盖且无法通过已审核域名命中的公司会保持 `UNRESOLVED
 令 `company_id` 为空，也不会自动创建公司。目录后续补录后，需要显式重新运行 resolver；
 不会静默回填历史记录。
 
+## Phase 4 已实现
+
+- 使用 LangChain `AzureChatOpenAI` 与 Pydantic strict structured output 提取招聘语义证据
+- 模型只接收脱敏正文、邮件接收时间和允许的 `ACTION_LINK_*` 引用
+- 输出保留 `company_raw`、`role_raw`，不生成 `company_id`，与 Phase 3.5 公司解析分离
+- 确定性校验处理链接幻觉、字段冲突、低置信度以及时间和时区歧义
+- 未明确时区的时间不做推断，保留来源文本并进入 `NEEDS_REVIEW`
+- 版本化 prompt 与九类 provider-independent 合同样例
+- Azure OpenAI 使用 Function managed identity，无 API key；调用带超时和有界重试
+
+Phase 4 是无状态语义提取层，不写数据库、不解析 canonical company、不创建日历或发送
+邮件，也不新增 Alembic 迁移。数据库 head 仍为 Phase 3.5 的 `20260813_0004`。
+
 ## 本地启动
 
 要求 Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 PostgreSQL。
@@ -92,6 +105,12 @@ Azure Functions 部署会读取根目录的 `requirements.txt`。需要设置：
 - `AZURE_KEY_VAULT_URL`
 - `LINK_ENCRYPTION_KEY_SECRET_NAME=recruitment-link-encryption-key`
 - `KEY_VAULT_REQUEST_TIMEOUT_SECONDS=10`
+- `LLM_ENABLED=true`
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_DEPLOYMENT`
+- `AZURE_OPENAI_API_VERSION=2024-10-21`
+- `AZURE_OPENAI_REQUEST_TIMEOUT_SECONDS=30`
+- `AZURE_OPENAI_MAX_RETRY_ATTEMPTS=3`
 - `MAIL_SYNC_SCHEDULE=0 */10 * * * *`
 - `AzureWebJobsStorage__accountName`
 - `AzureWebJobsStorage__credential=managedidentity`

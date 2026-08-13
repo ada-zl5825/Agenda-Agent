@@ -16,6 +16,9 @@
     },
     "mailSyncEnabled": {
       "value": false
+    },
+    "llmEnabled": {
+      "value": true
     }
   }
 }

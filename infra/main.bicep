@@ -45,6 +45,18 @@ param mailSyncSchedule string = '0 */10 * * * *'
 @description('Enable mail synchronization only after Alembic migrations and OAuth consent complete.')
 param mailSyncEnabled bool = false
 
+@description('Enable Phase 4 structured recruitment extraction.')
+param llmEnabled bool = false
+
+@description('HTTPS endpoint of the existing Azure OpenAI resource.')
+param azureOpenAIEndpoint string = ''
+
+@description('Structured-output-capable model deployment in the Azure OpenAI resource.')
+param azureOpenAIDeployment string = ''
+
+@description('Azure OpenAI stable API version used by LangChain.')
+param azureOpenAIApiVersion string = '2024-10-21'
+
 @description('Maximum Flex Consumption instance count.')
 @minValue(40)
 @maxValue(1000)
@@ -440,6 +452,12 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       AZURE_KEY_VAULT_URL: keyVault.properties.vaultUri
       LINK_ENCRYPTION_KEY_SECRET_NAME: linkEncryptionSecretName
       KEY_VAULT_REQUEST_TIMEOUT_SECONDS: '10'
+      LLM_ENABLED: string(llmEnabled)
+      AZURE_OPENAI_ENDPOINT: azureOpenAIEndpoint
+      AZURE_OPENAI_DEPLOYMENT: azureOpenAIDeployment
+      AZURE_OPENAI_API_VERSION: azureOpenAIApiVersion
+      AZURE_OPENAI_REQUEST_TIMEOUT_SECONDS: '30'
+      AZURE_OPENAI_MAX_RETRY_ATTEMPTS: '3'
       GRAPH_BASE_URL: 'https://graph.microsoft.com/v1.0'
       GRAPH_REQUEST_TIMEOUT_SECONDS: '30'
       GRAPH_MAX_RETRY_ATTEMPTS: '4'
