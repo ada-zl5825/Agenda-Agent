@@ -92,7 +92,14 @@ python -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32)
 
 ## Azure 配置
 
-Azure Functions 部署会读取根目录的 `requirements.txt`。需要设置：
+Azure Functions 部署会读取根目录的 `requirements.txt`。生成该文件时必须使用非 editable
+项目安装，确保远程构建把 `recruitment_agent` 安装到运行时的 `site-packages`：
+
+```powershell
+uv --cache-dir .uv-cache export --format requirements-txt --no-dev --no-hashes --no-editable --frozen --output-file requirements.txt
+```
+
+需要设置：
 
 - `DATABASE_URL`
 - `MICROSOFT_CLIENT_ID`
