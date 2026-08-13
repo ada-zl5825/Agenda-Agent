@@ -34,6 +34,13 @@ class RecruitmentExtractionService:
 
     async def extract(self, prepared: SecurePreparedEmail) -> RecruitmentExtractionOutcome:
         request = build_extraction_request(prepared)
+        return await self.extract_request(request)
+
+    async def extract_request(
+        self,
+        request: RecruitmentExtractionRequest,
+    ) -> RecruitmentExtractionOutcome:
+        """Extract from an already-guarded, sanitized Phase 4 request."""
         extraction = await self._model.extract(request)
         validation = self._validator.validate(extraction, request)
         return RecruitmentExtractionOutcome(

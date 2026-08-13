@@ -1,6 +1,7 @@
 # Privacy Model
 
-Phases 2 and 3 implement the deterministic privacy boundary. Phase 4 consumes only its safe output.
+Phases 2 and 3 implement the deterministic privacy boundary. Phase 4 consumes only its safe output,
+and Phase 5 checkpoints only the reduced privacy-safe workflow state.
 
 ## Processing order
 
@@ -50,6 +51,13 @@ opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`
   resolves secure destinations, changes workflow state, creates calendar events or sends email.
 - Provider failures are translated to a stable privacy-safe application error without propagating
   model input or provider response content.
+- Phase 5 graph context carries live service objects outside checkpoint state. Checkpoints may hold
+  sanitized text, opaque link refs, database IDs, structured extraction/validation evidence and
+  processing metadata only.
+- `processing_runs`, `llm_extractions` and `review_items` never persist raw HTML/body, attachments,
+  prompt/completion text, OAuth credentials, decrypted URLs or complete checkpoint payloads.
+- Interrupt payloads contain only a review ID, stable reason/type, typed question and allowed
+  choices. A resume decision is deterministically validated before its optimistic database update.
 - Plaintext destinations exist only during discovery, encryption, trusted resolution and the
   short-lived normalization replacement call.
 - `secure_links` persists only ciphertext, nonce, key version, link type, domain and sanitized

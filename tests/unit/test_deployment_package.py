@@ -32,6 +32,14 @@ def test_function_package_keeps_project_readme() -> None:
     assert Path("README.md").is_file()
 
 
+def test_function_package_includes_phase_five_runtime_dependencies() -> None:
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+    assert "langgraph==" in requirements
+    assert "langgraph-checkpoint-postgres==" in requirements
+    assert "psycopg-pool==" in requirements
+
+
 def test_flex_function_app_uses_function_app_config_for_python_runtime() -> None:
     """Flex Consumption rejects the legacy worker-runtime app setting."""
     infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")

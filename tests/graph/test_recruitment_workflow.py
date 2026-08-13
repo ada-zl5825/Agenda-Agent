@@ -1,0 +1,525 @@
+"""Branch, interrupt, resume, retry, and privacy tests for Phase 5."""
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID
+
+import pytest
+from langgraph.checkpoint.memory import InMemorySaver
+
+from recruitment_agent.domain.ports import Clock
+from recruitment_agent.extraction.models import (
+    ExtractionIssueCode,
+    ExtractionIssueSeverity,
+    ExtractionValidationIssue,
+    ExtractionValidationResult,
+    ExtractionValidationStatus,
+    RecruitmentExtraction,
+)
+from recruitment_agent.graph.builder import build_recruitment_graph
+from recruitment_agent.graph.context import RecruitmentGraphContext
+from recruitment_agent.graph.contracts import (
+    CompanyResolutionEvidence,
+    ExtractionAudit,
+    ProcessingRun,
+    ProcessingRunStatus,
+    ReviewDecision,
+    ReviewItem,
+    ReviewRequest,
+    ReviewStatus,
+    ReviewType,
+    RoleResolutionEvidence,
+    SafePreparedEmail,
+    WorkflowExtractionResult,
+    WorkflowPrefilterDecision,
+    WorkflowSourceEmail,
+    WorkflowStage,
+)
+from recruitment_agent.graph.ports import NoOpCalendarSync
+from recruitment_agent.graph.runner import RecruitmentWorkflowRunner, WorkflowStartRequest
+
+RUN_ID = UUID("00000000-0000-0000-0000-000000000501")
+SOURCE_EMAIL_ID = UUID("00000000-0000-0000-0000-000000000502")
+ACCOUNT_ID = UUID("00000000-0000-0000-0000-000000000503")
+COMPANY_ID = UUID("00000000-0000-0000-0000-000000000504")
+OTHER_COMPANY_ID = UUID("00000000-0000-0000-0000-000000000505")
+NOW = datetime(2026, 8, 13, 18, tzinfo=UTC)
+
+
+class FixedClock(Clock):
+    def now(self) -> datetime:
+        return NOW
+
+
+class FakeActivities:
+    def __init__(
+        self,
+        *,
+        prepared: SafePreparedEmail,
+        extraction: WorkflowExtractionResult,
+        failure: Exception | None = None,
+    ) -> None:
+        self.prepared = prepared
+        self.extraction = extraction
+        self.failure = failure
+        self.prepare_calls = 0
+        self.extract_calls = 0
+
+    async def prepare_email(
+        self,
+        *,
+        account_id: UUID,
+        source_email_id: UUID,
+        graph_message_id: str,
+    ) -> SafePreparedEmail:
+        assert account_id == ACCOUNT_ID
+        assert source_email_id == SOURCE_EMAIL_ID
+        assert graph_message_id == "graph-phase-5"
+        self.prepare_calls += 1
+        return self.prepared
+
+    async def extract_recruitment_data(
+        self,
+        prepared: SafePreparedEmail,
+    ) -> WorkflowExtractionResult:
+        assert prepared == self.prepared
+        self.extract_calls += 1
+        if self.failure is not None:
+            raise self.failure
+        return self.extraction
+
+
+class FakeWorkflowPersistence:
+    def __init__(self) -> None:
+        self.runs: dict[UUID, ProcessingRun] = {}
+        self.stages: list[WorkflowStage] = []
+        self.extractions: dict[UUID, WorkflowExtractionResult] = {}
+        self.reviews: dict[UUID, ReviewItem] = {}
+        self.resolutions: dict[UUID, ReviewDecision] = {}
+        self.final_status: ProcessingRunStatus | None = None
+        self.error_code: str | None = None
+        self.error_detail: str | None = None
+
+    async def load_source_email(self, source_email_id: UUID) -> WorkflowSourceEmail:
+        assert source_email_id == SOURCE_EMAIL_ID
+        return WorkflowSourceEmail(
+            id=SOURCE_EMAIL_ID,
+            account_id=ACCOUNT_ID,
+            graph_message_id="graph-phase-5",
+        )
+
+    async def start_run(self, run: ProcessingRun) -> None:
+        self.runs.setdefault(run.id, run)
+        self.stages.append(run.current_stage)
+
+    async def advance_run(
+        self,
+        *,
+        processing_run_id: UUID,
+        stage: WorkflowStage,
+        status: ProcessingRunStatus = ProcessingRunStatus.RUNNING,
+    ) -> None:
+        assert processing_run_id == RUN_ID
+        del status
+        self.stages.append(stage)
+
+    async def record_extraction(
+        self,
+        audit: ExtractionAudit,
+    ) -> WorkflowExtractionResult:
+        return self.extractions.setdefault(audit.processing_run_id, audit.result)
+
+    async def open_review(self, item: ReviewItem) -> None:
+        self.reviews.setdefault(item.id, item)
+
+    async def resolve_review(
+        self,
+        *,
+        review_id: UUID,
+        decision: ReviewDecision,
+        resolved_at: datetime,
+    ) -> None:
+        assert resolved_at == NOW
+        existing = self.resolutions.get(review_id)
+        if existing is not None and existing != decision:
+            raise ValueError("review resolution conflict")
+        self.resolutions[review_id] = decision
+
+    async def finalize_run(
+        self,
+        *,
+        processing_run_id: UUID,
+        source_email_id: UUID,
+        stage: WorkflowStage,
+        status: ProcessingRunStatus,
+        finished_at: datetime,
+        error_code: str | None = None,
+        error_detail_sanitized: str | None = None,
+    ) -> None:
+        assert processing_run_id == RUN_ID
+        assert source_email_id == SOURCE_EMAIL_ID
+        assert finished_at == NOW
+        self.stages.append(stage)
+        self.final_status = status
+        self.error_code = error_code
+        self.error_detail = error_detail_sanitized
+
+
+class MismatchedSourcePersistence(FakeWorkflowPersistence):
+    async def load_source_email(self, source_email_id: UUID) -> WorkflowSourceEmail:
+        assert source_email_id == SOURCE_EMAIL_ID
+        return WorkflowSourceEmail(
+            id=OTHER_COMPANY_ID,
+            account_id=ACCOUNT_ID,
+            graph_message_id="different-message",
+        )
+
+
+def _fixture(name: str) -> dict[str, object]:
+    return json.loads(
+        Path(f"tests/fixtures/extraction/{name}.json").read_text(encoding="utf-8")
+    )
+
+
+def _prepared(
+    *,
+    prefilter: WorkflowPrefilterDecision = WorkflowPrefilterDecision.LIKELY_RECRUITMENT,
+) -> SafePreparedEmail:
+    return SafePreparedEmail(
+        source_email_id=SOURCE_EMAIL_ID,
+        sender_domain="careers.example.test",
+        received_at=NOW,
+        sanitized_text="Nimbus Labs Graduate Engineer assessment using ACTION_LINK_01.",
+        link_refs=("ACTION_LINK_01",),
+        prefilter_decision=prefilter,
+    )
+
+
+def _validation(
+    status: ExtractionValidationStatus,
+    *codes: ExtractionIssueCode,
+) -> ExtractionValidationResult:
+    return ExtractionValidationResult(
+        status=status,
+        issues=tuple(
+            ExtractionValidationIssue(
+                code=code,
+                severity=ExtractionIssueSeverity.REVIEW
+                if status is ExtractionValidationStatus.NEEDS_REVIEW
+                else ExtractionIssueSeverity.ERROR,
+                field="event_datetime",
+            )
+            for code in codes
+        ),
+    )
+
+
+def _result(
+    fixture_name: str = "assessment",
+    *,
+    validation: ExtractionValidationResult | None = None,
+    company_status: str = "resolved",
+    candidate_ids: tuple[UUID, ...] = (),
+) -> WorkflowExtractionResult:
+    fixture = _fixture(fixture_name)
+    extraction = RecruitmentExtraction.model_validate(fixture["response"])
+    company = None
+    role = None
+    if extraction.relevant:
+        company = CompanyResolutionEvidence(
+            raw_company_name=extraction.company_raw,
+            company_id=COMPANY_ID if company_status == "resolved" else None,
+            status=company_status,
+            method="alias_exact" if company_status == "resolved" else company_status,
+            confidence=1.0 if company_status == "resolved" else 0.0,
+            matched_value="nimbus labs" if company_status == "resolved" else None,
+            candidate_company_ids=candidate_ids,
+        )
+        role = RoleResolutionEvidence(
+            raw_name=extraction.role_raw,
+            normalized_name=None
+            if extraction.role_raw is None
+            else extraction.role_raw.casefold(),
+            family="software_engineering",
+        )
+    return WorkflowExtractionResult(
+        extraction=extraction,
+        validation=validation or _validation(ExtractionValidationStatus.VALID),
+        prompt_version="recruitment-extraction-v1",
+        company=company,
+        role=role,
+        company_resolution_audit_id=None,
+    )
+
+
+def _runner(
+    activities: FakeActivities,
+    persistence: FakeWorkflowPersistence,
+    *,
+    checkpointer: InMemorySaver | None = None,
+) -> RecruitmentWorkflowRunner:
+    memory = checkpointer or InMemorySaver()
+    graph = build_recruitment_graph(checkpointer=memory)
+    return RecruitmentWorkflowRunner(
+        graph=graph,
+        context=RecruitmentGraphContext(
+            activities=activities,
+            persistence=persistence,
+            calendar=NoOpCalendarSync(),
+            clock=FixedClock(),
+        ),
+    )
+
+
+def _request() -> WorkflowStartRequest:
+    return WorkflowStartRequest(
+        source_email_id=SOURCE_EMAIL_ID,
+        model_deployment="structured-model",
+        processing_run_id=RUN_ID,
+    )
+
+
+@pytest.mark.asyncio
+async def test_happy_path_runs_every_phase_five_placeholder_without_side_effects() -> None:
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(prepared=_prepared(), extraction=_result())
+
+    outcome = await _runner(activities, persistence).start(_request())
+
+    assert outcome.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert not outcome.interrupted
+    assert outcome.state["application_id"] is None
+    assert outcome.state["event_id"] is None
+    assert outcome.state["action_item_ids"] == []
+    assert outcome.state["calendar_operation"] == {
+        "operation": "none",
+        "reason": "phase_7_not_implemented",
+    }
+    assert persistence.final_status is ProcessingRunStatus.COMPLETED
+    assert WorkflowStage.PERSIST_DOMAIN_CHANGES in persistence.stages
+    assert activities.extract_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_source_identity_is_loaded_atomically_before_mail_fetch() -> None:
+    persistence = MismatchedSourcePersistence()
+    activities = FakeActivities(prepared=_prepared(), extraction=_result())
+
+    with pytest.raises(ValueError, match="identity does not match"):
+        await _runner(activities, persistence).start(_request())
+
+    assert activities.prepare_calls == 0
+    assert not persistence.runs
+
+
+@pytest.mark.asyncio
+async def test_unlikely_prefilter_ends_without_model_invocation() -> None:
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(
+        prepared=_prepared(prefilter=WorkflowPrefilterDecision.UNLIKELY),
+        extraction=_result(),
+    )
+
+    outcome = await _runner(activities, persistence).start(_request())
+
+    assert outcome.state["status"] == ProcessingRunStatus.IGNORED.value
+    assert activities.extract_calls == 0
+    assert persistence.final_status is ProcessingRunStatus.IGNORED
+
+
+@pytest.mark.asyncio
+async def test_model_classified_irrelevant_email_ends_ignored() -> None:
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(
+        prepared=_prepared(prefilter=WorkflowPrefilterDecision.UNKNOWN),
+        extraction=_result("non_recruitment"),
+    )
+
+    outcome = await _runner(activities, persistence).start(_request())
+
+    assert outcome.state["status"] == ProcessingRunStatus.IGNORED.value
+    assert activities.extract_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_invalid_extraction_fails_before_placeholder_mutations() -> None:
+    persistence = FakeWorkflowPersistence()
+    invalid = _result(
+        validation=_validation(
+            ExtractionValidationStatus.INVALID,
+            ExtractionIssueCode.UNKNOWN_LINK_REF,
+        )
+    )
+
+    outcome = await _runner(
+        FakeActivities(prepared=_prepared(), extraction=invalid),
+        persistence,
+    ).start(_request())
+
+    assert outcome.state["status"] == ProcessingRunStatus.FAILED.value
+    assert persistence.final_status is ProcessingRunStatus.FAILED
+    assert persistence.error_code == "LLM_SCHEMA_INVALID"
+    assert WorkflowStage.RESOLVE_APPLICATION not in persistence.stages
+
+
+@pytest.mark.asyncio
+async def test_timezone_interrupt_rejects_invalid_choice_then_resumes() -> None:
+    persistence = FakeWorkflowPersistence()
+    needs_timezone = _result(
+        "interview_without_timezone",
+        validation=_validation(
+            ExtractionValidationStatus.NEEDS_REVIEW,
+            ExtractionIssueCode.DATETIME_UNRESOLVED,
+            ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
+        ),
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=needs_timezone),
+        persistence,
+    )
+
+    interrupted = await runner.start(_request())
+    invalid = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="not-allowed"),
+    )
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="Europe/London"),
+    )
+
+    assert interrupted.interrupted
+    assert interrupted.interrupt_payloads[0]["review_type"] == "TIMEZONE_AMBIGUITY"
+    assert invalid.interrupted
+    assert invalid.interrupt_payloads[0]["validation_error"] == "invalid_review_decision"
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert len(persistence.reviews) == 1
+    assert len(persistence.resolutions) == 1
+
+
+@pytest.mark.asyncio
+async def test_application_ambiguity_interrupt_can_select_reviewed_candidate() -> None:
+    persistence = FakeWorkflowPersistence()
+    ambiguous = _result(
+        company_status="ambiguous",
+        candidate_ids=(COMPANY_ID, OTHER_COMPANY_ID),
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=ambiguous),
+        persistence,
+    )
+
+    interrupted = await runner.start(_request())
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice=str(COMPANY_ID)),
+    )
+
+    assert interrupted.interrupt_payloads[0]["review_type"] == "APPLICATION_AMBIGUITY"
+    assert str(COMPANY_ID) in interrupted.interrupt_payloads[0]["allowed_choices"]
+    assert resumed.state["application_id"] == str(COMPANY_ID)
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_conflicting_datetime_interrupt_resumes_through_typed_choice() -> None:
+    persistence = FakeWorkflowPersistence()
+    conflict = _result(
+        "interview",
+        validation=_validation(
+            ExtractionValidationStatus.NEEDS_REVIEW,
+            ExtractionIssueCode.TIMEZONE_CONFLICT,
+        ),
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=conflict),
+        persistence,
+    )
+
+    interrupted = await runner.start(_request())
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="use_extracted"),
+    )
+
+    assert interrupted.interrupt_payloads[0]["review_type"] == "DATETIME_CONFLICT"
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_interrupt_survives_graph_reconstruction_with_same_checkpointer() -> None:
+    memory = InMemorySaver()
+    persistence = FakeWorkflowPersistence()
+    result = _result(
+        "interview_without_timezone",
+        validation=_validation(
+            ExtractionValidationStatus.NEEDS_REVIEW,
+            ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
+        ),
+    )
+    activities = FakeActivities(prepared=_prepared(), extraction=result)
+
+    first_runner = _runner(activities, persistence, checkpointer=memory)
+    assert (await first_runner.start(_request())).interrupted
+    reconstructed_runner = _runner(activities, persistence, checkpointer=memory)
+    resumed = await reconstructed_runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="Asia/Shanghai"),
+    )
+
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_failure_audit_records_only_safe_error_class() -> None:
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(
+        prepared=_prepared(),
+        extraction=_result(),
+        failure=RuntimeError("private@example.test token=plaintext-secret"),
+    )
+
+    with pytest.raises(RuntimeError, match="plaintext-secret"):
+        await _runner(activities, persistence).start(_request())
+
+    assert persistence.final_status is ProcessingRunStatus.FAILED
+    assert persistence.error_code == "WORKFLOW_FAILED"
+    assert persistence.error_detail == "RuntimeError"
+    assert "plaintext-secret" not in repr(persistence.__dict__)
+
+
+def test_review_item_identity_is_stable_and_contains_no_checkpoint_payload() -> None:
+    request = _result(
+        "interview_without_timezone",
+        validation=_validation(
+            ExtractionValidationStatus.NEEDS_REVIEW,
+            ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
+        ),
+    )
+    assert request.validation.status is ExtractionValidationStatus.NEEDS_REVIEW
+
+    review_request = ReviewItem.create(
+        processing_run_id=RUN_ID,
+        request=ReviewRequest(
+            review_type=ReviewType.TIMEZONE_AMBIGUITY,
+            reason="timezone_ambiguity",
+            question="Select timezone.",
+            allowed_choices=("Europe/London", "ignore"),
+        ),
+        created_at=NOW,
+    )
+    repeated = ReviewItem.create(
+        processing_run_id=RUN_ID,
+        request=review_request.request,
+        created_at=NOW,
+    )
+
+    assert review_request.id == repeated.id
+    assert review_request.status is ReviewStatus.OPEN
+    assert "checkpoint" not in review_request.request.model_dump()

@@ -18,7 +18,10 @@ def test_phase_four_five_tables_use_application_schema() -> None:
         "app.mail_sync_states",
         "app.microsoft_authorization_flows",
         "app.microsoft_connections",
+        "app.llm_extractions",
+        "app.processing_runs",
         "app.recruitment_events",
+        "app.review_items",
         "app.secure_links",
         "app.source_emails",
     }
@@ -76,3 +79,26 @@ def test_company_resolution_audit_references_email_and_reviewed_candidates() -> 
         "resolution_attempt_id",
         "company_id",
     ]
+
+
+def test_phase_five_audit_tables_exclude_raw_content_and_checkpoint_payloads() -> None:
+    runs = Base.metadata.tables["app.processing_runs"]
+    extractions = Base.metadata.tables["app.llm_extractions"]
+    reviews = Base.metadata.tables["app.review_items"]
+    all_columns = set(runs.c) | set(extractions.c) | set(reviews.c)
+    names = {column.name for column in all_columns}
+
+    assert {
+        "raw_html",
+        "raw_email_body",
+        "oauth_token",
+        "decrypted_url",
+        "checkpoint_payload",
+        "attachments",
+        "model_prompt",
+        "model_completion",
+    }.isdisjoint(names)
+    assert "extraction" in extractions.c
+    assert "validation" in extractions.c
+    assert "allowed_choices" in reviews.c
+    assert "resolution" in reviews.c

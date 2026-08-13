@@ -7,6 +7,7 @@ from recruitment_agent.persistence.company_resolutions import (
 from recruitment_agent.persistence.mail import SqlAlchemyMailSyncStore
 from recruitment_agent.persistence.microsoft_auth import SqlAlchemyMicrosoftAuthStore
 from recruitment_agent.persistence.secure_links import SqlAlchemySecureLinkRepository
+from recruitment_agent.persistence.workflow import SqlAlchemyWorkflowPersistence
 
 __all__ = [
     "SqlAlchemyCompanyRepository",
@@ -14,4 +15,5 @@ __all__ = [
     "SqlAlchemyMailSyncStore",
     "SqlAlchemyMicrosoftAuthStore",
     "SqlAlchemySecureLinkRepository",
+    "SqlAlchemyWorkflowPersistence",
 ]

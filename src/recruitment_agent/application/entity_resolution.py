@@ -63,6 +63,20 @@ class RecruitmentEntityResolutionService:
         prepared: SecurePreparedEmail,
     ) -> RecruitmentEntityResolutionOutcome:
         extraction = await self._extraction_service.extract(prepared)
+        return await self.resolve_extraction(
+            extraction,
+            source_email_id=prepared.normalized.source_email_id,
+            sender_domain=prepared.normalized.sender_domain,
+        )
+
+    async def resolve_extraction(
+        self,
+        extraction: RecruitmentExtractionOutcome,
+        *,
+        source_email_id: UUID,
+        sender_domain: str | None,
+    ) -> RecruitmentEntityResolutionOutcome:
+        """Resolve validated extraction evidence without requiring transient email content."""
         if (
             extraction.validation.status is ExtractionValidationStatus.INVALID
             or not extraction.extraction.relevant
@@ -76,12 +90,12 @@ class RecruitmentEntityResolutionService:
 
         company = await self._company_resolver.resolve(
             company_raw=extraction.extraction.company_raw,
-            sender_domain=prepared.normalized.sender_domain,
+            sender_domain=sender_domain,
         )
         role = self._role_normalizer.normalize(extraction.extraction.role_raw)
         audit = CompanyResolutionAudit.create(
-            source_email_id=prepared.normalized.source_email_id,
-            sender_domain=prepared.normalized.sender_domain,
+            source_email_id=source_email_id,
+            sender_domain=sender_domain,
             resolution=company,
             role=role,
         )
