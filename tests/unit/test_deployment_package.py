@@ -4,6 +4,21 @@ import json
 from pathlib import Path
 
 
+def test_function_package_installs_project_non_editably() -> None:
+    """Remote builds must install the project into the runtime site-packages directory."""
+    requirement_lines = [
+        line.strip()
+        for line in Path("requirements.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+    assert requirement_lines[0] == "."
+    assert not any(
+        line == "-e" or line.startswith(("-e ", "--editable "))
+        for line in requirement_lines
+    )
+
+
 def test_function_package_keeps_project_readme() -> None:
     """The build backend needs the pyproject readme during ``pip install .``."""
     ignored_patterns = {
