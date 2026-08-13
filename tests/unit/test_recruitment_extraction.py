@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from recruitment_agent.application.errors import ExtractionInputError, ExtractionInvocationError
 from recruitment_agent.application.recruitment_extraction import (
@@ -21,6 +22,8 @@ from recruitment_agent.email.models import (
 )
 from recruitment_agent.extraction.langchain_azure import (
     LangChainRecruitmentExtractionModel,
+    _create_langchain_chat_model,
+    _uses_foundry_v1,
     create_azure_recruitment_extraction_model,
 )
 from recruitment_agent.extraction.models import (
@@ -244,3 +247,54 @@ async def test_azure_factory_composes_strict_model_without_api_key() -> None:
 
     assert isinstance(adapter, LangChainRecruitmentExtractionModel)
     await adapter.aclose()
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("https://foundry.example.test/openai/v1", True),
+        ("https://foundry.example.test/openai/v1/", True),
+        ("https://classic.example.test", False),
+        ("https://classic.example.test/openai/deployments/model", False),
+    ],
+)
+def test_foundry_v1_endpoint_detection(endpoint: str, expected: bool) -> None:
+    assert _uses_foundry_v1(endpoint) is expected
+
+
+def test_foundry_v1_client_uses_deployment_as_model_and_async_token_provider() -> None:
+    async def token_provider() -> str:
+        return "managed-identity-token"
+
+    model = _create_langchain_chat_model(
+        endpoint="https://foundry.example.test/openai/v1",
+        deployment="structured-model",
+        api_version="unused-for-v1",
+        token_provider=token_provider,
+        timeout=30,
+        max_retries=2,
+    )
+
+    assert isinstance(model, ChatOpenAI)
+    assert model.openai_api_base == "https://foundry.example.test/openai/v1/"
+    assert model.model_name == "structured-model"
+    assert model.openai_api_key is token_provider
+
+
+def test_classic_client_keeps_azure_deployment_route() -> None:
+    async def token_provider() -> str:
+        return "managed-identity-token"
+
+    model = _create_langchain_chat_model(
+        endpoint="https://classic.example.test",
+        deployment="structured-model",
+        api_version="2024-10-21",
+        token_provider=token_provider,
+        timeout=30,
+        max_retries=2,
+    )
+
+    assert isinstance(model, AzureChatOpenAI)
+    assert model.azure_endpoint == "https://classic.example.test"
+    assert model.deployment_name == "structured-model"
+    assert model.openai_api_version == "2024-10-21"

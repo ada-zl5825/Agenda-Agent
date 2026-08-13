@@ -56,7 +56,7 @@ Seed 未覆盖且无法通过已审核域名命中的公司会保持 `UNRESOLVED
 
 ## Phase 4 已实现
 
-- 使用 LangChain `AzureChatOpenAI` 与 Pydantic strict structured output 提取招聘语义证据
+- 使用 LangChain `ChatOpenAI` / `AzureChatOpenAI` 与 Pydantic strict structured output 提取招聘语义证据
 - 模型只接收脱敏正文、邮件接收时间和允许的 `ACTION_LINK_*` 引用
 - 输出保留 `company_raw`、`role_raw`，不生成 `company_id`，与 Phase 3.5 公司解析分离
 - 确定性校验处理链接幻觉、字段冲突、低置信度以及时间和时区歧义
@@ -108,7 +108,7 @@ Azure Functions 部署会读取根目录的 `requirements.txt`。需要设置：
 - `LLM_ENABLED=true`
 - `AZURE_OPENAI_ENDPOINT`
 - `AZURE_OPENAI_DEPLOYMENT`
-- `AZURE_OPENAI_API_VERSION=2024-10-21`
+- `AZURE_OPENAI_API_VERSION=2024-10-21`（Foundry `/openai/v1` endpoint 会忽略此值）
 - `AZURE_OPENAI_REQUEST_TIMEOUT_SECONDS=30`
 - `AZURE_OPENAI_MAX_RETRY_ATTEMPTS=3`
 - `MAIL_SYNC_SCHEDULE=0 */10 * * * *`
