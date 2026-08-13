@@ -143,6 +143,9 @@ def _evidence(
             if starts_at is not None
             else None
         ),
+        source_deadline_text=(
+            "21 August 2026 at 17:00 BST" if deadline is not None else None
+        ),
     )
 
 
@@ -184,6 +187,7 @@ async def test_assessment_creates_application_event_action_and_pending_status() 
     assert event.kind is EventResolutionKind.CREATE
     assert plan.application_status_after is ApplicationStatus.ASSESSMENT_PENDING
     assert plan.event.kind is EventMutationKind.CREATE
+    assert plan.event.source_datetime_text == "21 August 2026 at 17:00 BST"
     assert plan.action_item is not None
     assert plan.action_item.secure_link_ref == "ACTION_LINK_01"
     assert len(plan.action_item.idempotency_key) == 64

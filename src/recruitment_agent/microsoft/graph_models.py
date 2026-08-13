@@ -55,3 +55,11 @@ class GraphDeltaResponse(BaseModel):
     value: list[GraphMessage]
     next_link: str | None = Field(default=None, alias="@odata.nextLink")
     delta_link: str | None = Field(default=None, alias="@odata.deltaLink")
+
+
+class GraphCalendarEvent(BaseModel):
+    """Minimal response contract required after a Calendar mutation."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str

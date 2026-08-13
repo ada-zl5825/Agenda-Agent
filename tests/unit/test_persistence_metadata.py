@@ -9,6 +9,7 @@ def test_phase_four_five_tables_use_application_schema() -> None:
         "app.action_items",
         "app.application_status_history",
         "app.applications",
+        "app.calendar_links",
         "app.companies",
         "app.company_aliases",
         "app.company_domains",
@@ -53,9 +54,16 @@ def test_idempotency_constraints_are_named_and_present() -> None:
         for constraint in Base.metadata.tables["app.action_items"].constraints
         if isinstance(constraint, UniqueConstraint)
     }
+    calendar_constraints = {
+        constraint.name
+        for constraint in Base.metadata.tables["app.calendar_links"].constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
 
     assert "uq_recruitment_events_application_fingerprint" in event_constraints
     assert "uq_action_items_application_idempotency_key" in action_constraints
+    assert "uq_calendar_links_recruitment_event" in calendar_constraints
+    assert "uq_calendar_links_provider_event" in calendar_constraints
 
 
 def test_action_items_reference_secure_links_without_cascading_deletes() -> None:

@@ -1,4 +1,4 @@
-# Privacy Model
+# Privacy Model through Phase 7
 
 Phases 2 and 3 implement the deterministic privacy boundary. Phase 4 consumes only its safe output,
 and Phases 5/6 checkpoint only the reduced privacy-safe workflow state and typed domain intent.
@@ -70,3 +70,10 @@ opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`
   validates that the decrypted hostname matches stored metadata.
 - Key Vault access uses the Function App managed identity; key material and decrypted URLs are
   excluded from object representations and logs.
+- Phase 7 Calendar descriptions are built only from canonical company/role metadata, validated
+  event fields, sanitized source-time evidence, and an allowlisted Outlook web link with query and
+  fragment removed. Calendar planning never loads `secure_links`, decrypted action URLs, raw email
+  content, attachments, OAuth tokens, prompts, or model completions.
+- Graph Calendar responses are reduced immediately to an opaque immutable event ID. Graph error
+  bodies and event descriptions are not logged or checkpointed; graph state retains only the
+  operation and a stable privacy-safe reason.

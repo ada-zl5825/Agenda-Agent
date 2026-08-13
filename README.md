@@ -181,7 +181,21 @@ uv run pytest -m integration
   evidence yields a zero-mutation plan.
 - Secure destinations remain encrypted; Phase 6 stores only the matching `secure_link_id` and keeps
   opaque refs in graph checkpoints.
-- Alembic head is `20260813_0007`. Phase 7 Calendar synchronization remains a typed no-op.
+- Alembic head for Phase 6 is `20260813_0007`; Phase 7 extends it with `20260813_0008`.
+
+## Phase 7 implemented
+
+- Provider-neutral Calendar planning accepts only resolved applications and active, timezone-aware
+  interview or assessment/deadline events.
+- Microsoft Graph creates private attendee-free events and updates the same immutable event on
+  reschedule. Stable `transactionId` values and `calendar_links` prevent retry duplicates.
+- Calendar descriptions contain only approved metadata, label durations as placeholders, and never
+  contain decrypted action links or secret query strings.
+- Missing or unsafe linked events enter `UNSAFE_CALENDAR_UPDATE` human Review instead of being
+  recreated silently.
+- Apply Alembic head `20260813_0008`, grant delegated `Calendars.ReadWrite`, reauthorize the account,
+  then set `CALENDAR_SYNC_ENABLED=true`. It remains false by default.
+- Phase 8 Daily Brief, Mail.Send, and the graphical Review UI are not implemented in this phase.
 
 完整边界与后续 phase 见
 [最终技术设计](docs/01_FINAL_TECHNICAL_DESIGN.md) 和 [AGENTS.md](AGENTS.md)。

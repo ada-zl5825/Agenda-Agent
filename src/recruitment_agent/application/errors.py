@@ -53,3 +53,15 @@ class ExtractionInputError(ApplicationError):
 
 class ExtractionInvocationError(ApplicationError):
     code = "EXTRACTION_INVOCATION_FAILED"
+
+
+class CalendarCreateError(ApplicationError):
+    code = "CALENDAR_CREATE_FAILED"
+
+
+class CalendarUpdateError(ApplicationError):
+    code = "CALENDAR_UPDATE_FAILED"
+
+
+class CalendarEventNotFoundError(CalendarUpdateError):
+    """The event linked in PostgreSQL no longer exists in the provider."""

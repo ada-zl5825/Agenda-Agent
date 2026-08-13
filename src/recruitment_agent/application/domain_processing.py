@@ -309,7 +309,7 @@ def _planned_event(
         starts_at=evidence.event_datetime,
         deadline_at=evidence.deadline,
         timezone=evidence.timezone,
-        source_datetime_text=evidence.source_datetime_text,
+        source_datetime_text=(evidence.source_datetime_text or evidence.source_deadline_text),
         semantic_fingerprint=resolution.semantic_fingerprint,
     )
 

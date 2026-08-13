@@ -1,4 +1,4 @@
-# Operations through Phase 6
+# Operations through Phase 7
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -74,8 +74,35 @@ semantic fingerprints and action idempotency keys make retries safe. Do not manu
 tables or bypass the workflow with direct SQL. Required but unresolved interview time evidence must
 remain in Review and produces no domain write.
 
-Phase 6 still performs no Calendar operation, sends no Daily Brief, and does not expose the future
-authenticated graphical Review page.
+Phase 6 sends no Daily Brief and does not expose the future authenticated graphical Review page.
+
+## Phase 7 Outlook Calendar
+
+Phase 7 adds migration `20260813_0008` and delegated Microsoft Graph permission
+`Calendars.ReadWrite`. Apply the migration before enabling Calendar writes:
+
+```text
+uv run alembic upgrade head
+```
+
+For a fresh Entra app registration, `bootstrap-azure.ps1` requests `User.Read`, `Mail.Read`, and
+`Calendars.ReadWrite`. For an existing registration, add the delegated `Calendars.ReadWrite`
+permission directly in Entra/Azure Portal or with Azure CLI, then visit `/auth/login` and complete
+consent again so the encrypted MSAL cache contains a token for the expanded scopes. Do not rerun the
+whole bootstrap merely to add this permission: that script intentionally rotates the Microsoft
+client secret and application encryption secrets.
+
+Production defaults `CALENDAR_SYNC_ENABLED=false`. After the migration and reauthorization are
+complete, set the GitHub `production` environment variable `CALENDAR_SYNC_ENABLED=true` and deploy
+from `main`. Leave it false to exercise the full workflow without any Calendar mutation. Optional
+durations are `CALENDAR_INTERVIEW_PLACEHOLDER_MINUTES=60` and
+`CALENDAR_ASSESSMENT_PLACEHOLDER_MINUTES=30`; descriptions always label them as placeholders.
+
+Calendar calls use bounded Graph retries, `Retry-After`, one forced token refresh after 401,
+immutable provider IDs, and create `transactionId` values derived from deterministic event content.
+If a user deletes a linked Outlook event, replacement is blocked behind
+`UNSAFE_CALENDAR_UPDATE` Review. Phase 7 does not send Daily Brief email and does not request
+`Mail.Send`.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:

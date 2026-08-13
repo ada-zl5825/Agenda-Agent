@@ -45,6 +45,19 @@ param mailSyncSchedule string = '0 */10 * * * *'
 @description('Enable mail synchronization only after Alembic migrations and OAuth consent complete.')
 param mailSyncEnabled bool = false
 
+@description('Enable Phase 7 Calendar writes only after migration, consent, and reauthorization.')
+param calendarSyncEnabled bool = false
+
+@description('Visible placeholder duration for interview Calendar entries.')
+@minValue(1)
+@maxValue(1440)
+param calendarInterviewPlaceholderMinutes int = 60
+
+@description('Visible placeholder duration at an assessment deadline; not assessment length.')
+@minValue(1)
+@maxValue(1440)
+param calendarAssessmentPlaceholderMinutes int = 30
+
 @description('Enable Phase 4 structured recruitment extraction.')
 param llmEnabled bool = false
 
@@ -466,6 +479,9 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       MAIL_SYNC_ENABLED: string(mailSyncEnabled)
       MAIL_SYNC_INTERVAL_MINUTES: '10'
       MAIL_SYNC_SCHEDULE: mailSyncSchedule
+      CALENDAR_SYNC_ENABLED: string(calendarSyncEnabled)
+      CALENDAR_INTERVIEW_PLACEHOLDER_MINUTES: string(calendarInterviewPlaceholderMinutes)
+      CALENDAR_ASSESSMENT_PLACEHOLDER_MINUTES: string(calendarAssessmentPlaceholderMinutes)
       AzureWebJobsStorage__accountName: storage.name
       AzureWebJobsStorage__credential: 'managedidentity'
       AzureWebJobsStorage__clientId: runtimeIdentity.properties.clientId

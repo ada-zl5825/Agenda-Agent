@@ -233,17 +233,27 @@ az ad app update `
 $graphResourceAppId = "00000003-0000-0000-c000-000000000000"
 $userReadScopeId = "e1fe6dd8-ba31-4d61-89e7-88639da4683d"
 $mailReadScopeId = "570282fd-fa5c-430d-a7fd-fc8dc98a9dca"
+$calendarsReadWriteScopeId = "1ec239c2-d7c9-4623-a91a-a9775856bb36"
 $configuredGraphScopes = az ad app permission list `
     --id $microsoftClientId `
     --query "[?resourceAppId=='$graphResourceAppId'].resourceAccess[].id" `
     --output tsv `
     --only-show-errors
-if (($configuredGraphScopes -notcontains $userReadScopeId) -or
-    ($configuredGraphScopes -notcontains $mailReadScopeId)) {
+$requiredGraphScopeIds = @(
+    $userReadScopeId,
+    $mailReadScopeId,
+    $calendarsReadWriteScopeId
+)
+$missingGraphPermissions = @(
+    $requiredGraphScopeIds |
+        Where-Object { $configuredGraphScopes -notcontains $_ } |
+        ForEach-Object { "$_=Scope" }
+)
+if ($missingGraphPermissions.Count -gt 0) {
     az ad app permission add `
         --id $microsoftClientId `
         --api $graphResourceAppId `
-        --api-permissions "$userReadScopeId=Scope" "$mailReadScopeId=Scope" `
+        --api-permissions $missingGraphPermissions `
         --only-show-errors | Out-Null
 }
 
@@ -278,6 +288,7 @@ $linkEncryptionKey = [Convert]::ToBase64String($linkEncryptionKeyBytes)
 Set-GitHubVariable -Name "AZURE_CLIENT_ID" -Value ([string] $deploymentIdentity.clientId)
 Set-GitHubVariable -Name "AZURE_TENANT_ID" -Value $tenantId
 Set-GitHubVariable -Name "AZURE_SUBSCRIPTION_ID" -Value $SubscriptionId
+Set-GitHubVariable -Name "CALENDAR_SYNC_ENABLED" -Value "false"
 Set-GitHubVariable -Name "AZURE_RESOURCE_GROUP" -Value $ResourceGroupName
 Set-GitHubVariable -Name "AZURE_FUNCTIONAPP_NAME" -Value $functionAppName
 Set-GitHubVariable -Name "MICROSOFT_CLIENT_ID" -Value $microsoftClientId

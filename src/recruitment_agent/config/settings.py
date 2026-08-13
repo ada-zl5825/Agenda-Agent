@@ -101,6 +101,9 @@ class MicrosoftSettings(BaseSettings):
     mail_folder_id: str = "inbox"
     mail_sync_enabled: bool = True
     mail_sync_interval_minutes: int = Field(default=10, ge=1, le=1440)
+    calendar_sync_enabled: bool = False
+    calendar_interview_placeholder_minutes: int = Field(default=60, ge=1, le=1440)
+    calendar_assessment_placeholder_minutes: int = Field(default=30, ge=1, le=1440)
 
     @field_validator("microsoft_client_id", "mail_folder_id", "token_cache_encryption_key_version")
     @classmethod

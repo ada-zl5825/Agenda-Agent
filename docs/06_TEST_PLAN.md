@@ -1,4 +1,4 @@
-# Test Plan through Phase 6
+# Test Plan through Phase 7
 
 The automated suite covers:
 
@@ -53,7 +53,12 @@ The automated suite covers:
 - single-target reschedule updates, ambiguous reschedule interrupts, and old-value history;
 - unresolved required datetime/timezone evidence produces a zero-mutation plan;
 - Phase 6 transition plans retain opaque link refs and never plaintext secure URLs;
-- the Phase 7 Calendar placeholder produces no external side effect;
+- Phase 7 Calendar eligibility, deterministic subject/body planning, explicit placeholder
+  durations, create/update/unchanged paths, transaction idempotency, and missing-event Review;
+- Graph Calendar POST/PATCH payloads, immutable IDs, URL escaping, bounded retries, 401 refresh,
+  404 handling, and `Retry-After` behavior;
+- Calendar descriptions exclude action tokens, untrusted URLs and source-link query strings;
+- `calendar_links` uniqueness metadata and Phase 7 Alembic upgrade/downgrade compilation;
 - graph-state, object-representation and failure-audit privacy regressions; and
 - isolated PostgreSQL checkpoint connection configuration.
 

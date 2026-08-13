@@ -43,4 +43,6 @@ class RecruitmentGraphState(RecruitmentGraphInput):
     event_id: NotRequired[str | None]
     action_item_ids: NotRequired[list[str]]
     calendar_operation: NotRequired[dict[str, object]]
+    replace_missing_calendar_event: NotRequired[bool]
+    skip_calendar_update: NotRequired[bool]
     error_code: NotRequired[str | None]

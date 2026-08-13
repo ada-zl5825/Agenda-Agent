@@ -29,7 +29,7 @@ from recruitment_agent.microsoft.auth_contracts import (
     TokenCacheSnapshot,
 )
 from recruitment_agent.microsoft.crypto import AesGcmCipher
-from recruitment_agent.microsoft.scopes import MAIL_READ_SCOPES
+from recruitment_agent.microsoft.scopes import GRAPH_DELEGATED_SCOPES
 
 
 class DefaultMsalClientFactory:
@@ -78,7 +78,7 @@ class MicrosoftAuthorizationService:
         state = secrets.token_urlsafe(32)
         flow = await asyncio.to_thread(
             client.initiate_auth_code_flow,
-            MAIL_READ_SCOPES,
+            GRAPH_DELEGATED_SCOPES,
             redirect_uri=str(self._settings.microsoft_redirect_uri),
             state=state,
         )
@@ -171,7 +171,7 @@ class MicrosoftAuthorizationService:
         account = self._select_account(accounts, snapshot.home_account_id)
         result = await asyncio.to_thread(
             client.acquire_token_silent_with_error,
-            MAIL_READ_SCOPES,
+            GRAPH_DELEGATED_SCOPES,
             account,
             force_refresh=force_refresh,
         )

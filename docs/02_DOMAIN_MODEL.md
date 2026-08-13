@@ -1,4 +1,4 @@
-# Domain Model through Phase 6
+# Domain Model through Phase 7
 
 `Application` remains the recruitment aggregate root. `RecruitmentEvent` and `ActionItem` belong to
 an application and use explicit status enums. Email and future model output are evidence, not domain
@@ -101,4 +101,18 @@ change records `application_status_history`. Assessment/interview actions keep o
 `secure_link_id`; graph state and transition plans contain the opaque link reference. Evidence with
 an unresolved required datetime or timezone produces a zero-mutation plan.
 
-Calendar synchronization remains the typed Phase 7 no-op.
+## Phase 7 Calendar synchronization
+
+`RecruitmentEvent` remains the source of truth. `calendar_links` stores only the provider mapping,
+account identity, SHA-256 content fingerprint and last-sync timestamp. A unique constraint permits
+at most one linked Calendar event per recruitment event; another unique constraint prevents one
+provider event from being linked to two domain events.
+
+The provider-neutral planner accepts only an active interview/reschedule with a confirmed start, or
+an active assessment/deadline with a confirmed deadline. The application must have a canonical
+company and the datetime must be timezone-aware with an explicitly resolved timezone. Unsupported
+events are skipped; ambiguous or unsafe cases enter `UNSAFE_CALENDAR_UPDATE` Review. Reschedules
+update the same linked Calendar event rather than creating another event.
+
+Calendar duration is explicitly a configurable placeholder (60 minutes for interviews, 30 minutes
+at assessment deadlines by default), never an inferred assessment or interview duration.

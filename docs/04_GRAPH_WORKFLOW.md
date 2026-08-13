@@ -25,8 +25,9 @@ load_source_email
                      -> request_review            (uncertain reschedule)
                   -> plan_state_transition
                   -> persist_domain_changes
-                  -> sync_calendar_placeholder
-                  -> finalize_processing
+                  -> sync_calendar_placeholder   (stable checkpoint node ID; real Phase 7 sync)
+                       -> request_review          (unsafe create/update)
+                       -> finalize_processing
 ```
 
 Email fetching, action-link encryption, normalization and sanitization execute inside one transient
@@ -37,7 +38,10 @@ workflow stages and validate that safe boundary; they never checkpoint the trans
 The Phase 6 domain nodes now call a provider-neutral service. Resolution nodes are read-only and
 checkpoint only typed IDs/candidates. `plan_state_transition` creates an intent; only
 `persist_domain_changes` may write domain state, and it does so through one transaction that
-revalidates source/application/event identities. The Phase 7 calendar node remains a typed no-op.
+revalidates source/application/event identities. The Phase 7 calendar node reloads authoritative
+domain data, plans a safe provider-neutral event, and only then invokes the Graph adapter. Its old
+`sync_calendar_placeholder` node ID is intentionally retained so Phase 5/6 durable checkpoints can
+resume after deployment.
 
 ## Persistence and resume contract
 
@@ -52,6 +56,9 @@ revalidates source/application/event identities. The Phase 7 calendar node remai
   workflow.
 - `UNCERTAIN_RESCHEDULE` pauses when zero or multiple active interviews could be the target. Resume
   may select one candidate, explicitly treat the evidence as a new interview, or ignore it.
+- `UNSAFE_CALENDAR_UPDATE` pauses when a linked event disappeared or another Calendar invariant
+  would be violated. Review may approve replacement, skip the Calendar update, or ignore the
+  workflow. A missing linked provider event is never silently recreated.
 - Side effects before an interrupt are idempotent because an interrupted node restarts when
   resumed.
 
