@@ -1,7 +1,7 @@
 # Recruitment Inbox Agent
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1、Phase 2 与 Phase 3。
+Phase 1、Phase 2、Phase 3 与 Phase 3.5。
 
 ## Phase 1 已实现
 
@@ -40,6 +40,20 @@ Phase 1、Phase 2 与 Phase 3。
 Phase 3 不包含 LLM、LangGraph、附件下载、日历或自动发信。数据库仍不保存原始邮件
 正文、HTML、附件、明文 OAuth token 或明文动作 URL。
 
+## Phase 3.5 已实现
+
+- `Company`、`CompanyAlias` 与 `CompanyDomain` 规范实体和父子公司关系
+- 公司名 Unicode/case/punctuation/whitespace 确定性规范化
+- 按规范名称、别名、发件域名依次进行严格 exact match
+- 未知公司保持 `UNRESOLVED`，冲突记录返回 `AMBIGUOUS`；不做模糊、向量或 LLM 匹配
+- `Application` 用 `company_id` 表示规范身份，并原样保留 `raw_company_name`
+- Phase 4 预留 `company_raw`、`role_raw` 原始抽取合同，不包含模型集成
+- 可重复执行的 35 家常见招聘公司 seed 目录和 PostgreSQL 仓储
+
+Seed 未覆盖且无法通过已审核域名命中的公司会保持 `UNRESOLVED`：系统保留原始公司名、
+令 `company_id` 为空，也不会自动创建公司。目录后续补录后，需要显式重新运行 resolver；
+不会静默回填历史记录。
+
 ## 本地启动
 
 要求 Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 PostgreSQL。
@@ -48,6 +62,7 @@ Phase 3 不包含 LLM、LangGraph、附件下载、日历或自动发信。数�
 Copy-Item .env.example .env
 uv sync --all-groups --locked
 uv run alembic upgrade head
+uv run seed-companies
 uv run uvicorn recruitment_agent.api.app:app --reload
 ```
 

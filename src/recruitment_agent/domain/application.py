@@ -14,17 +14,16 @@ class Application:
     """A candidate's application to a company and role."""
 
     id: UUID
-    company_name: str
+    company_id: UUID | None
+    raw_company_name: str | None
     role_name: str | None
     status: ApplicationStatus
     created_at: datetime
     updated_at: datetime
 
     def __post_init__(self) -> None:
-        self.company_name = self.company_name.strip()
-        if not self.company_name:
-            msg = "company_name must not be empty"
-            raise DomainValidationError(msg)
+        if self.raw_company_name is not None and not self.raw_company_name.strip():
+            raise DomainValidationError("raw_company_name must be null or non-empty")
 
         if self.role_name is not None:
             normalized_role = self.role_name.strip()
@@ -37,10 +36,13 @@ class Application:
             raise DomainValidationError(msg)
 
     @property
-    def normalized_identity(self) -> tuple[str, str | None]:
-        """Return a deterministic identity key for exact matching."""
-        company = " ".join(self.company_name.casefold().split())
+    def normalized_identity(self) -> tuple[UUID | None, str | None]:
+        """Return an identity keyed by canonical company ID, never a guessed name."""
         role = None
         if self.role_name is not None:
             role = " ".join(self.role_name.casefold().split())
-        return company, role
+        return self.company_id, role
+
+    @property
+    def company_resolved(self) -> bool:
+        return self.company_id is not None

@@ -8,6 +8,20 @@ Apply database changes only through Alembic:
 uv run alembic upgrade head
 ```
 
+After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
+from the same VNet-connected environment:
+
+```text
+uv run seed-companies
+```
+
+The seed command currently loads 35 reviewed common employers using stable UUIDs and exact
+aliases/domains. It does not call external services, perform fuzzy matching, create companies from
+observed mail or replace manually reviewed companies. Run it after every catalog update; repeated
+execution updates the same seed-owned records without creating duplicates. The operation is
+additive: removing an alias or domain from the source catalog does not delete the existing database
+record, so retirement requires a separate reviewed catalog mutation.
+
 Future timers and external calls must be idempotent, timeout-bounded and retry-bounded.
 
 ## Production deployment

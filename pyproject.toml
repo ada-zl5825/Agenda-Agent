@@ -28,6 +28,9 @@ dependencies = [
   "structlog>=25.4,<26",
 ]
 
+[project.scripts]
+seed-companies = "recruitment_agent.jobs.company_seed:main"
+
 [dependency-groups]
 dev = [
   "mypy>=1.17,<2",

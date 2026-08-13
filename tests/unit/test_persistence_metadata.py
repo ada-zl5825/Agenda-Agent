@@ -4,11 +4,14 @@ from recruitment_agent.persistence import models as persistence_models  # noqa: 
 from recruitment_agent.persistence.base import Base
 
 
-def test_phase_three_tables_use_application_schema() -> None:
+def test_phase_three_five_tables_use_application_schema() -> None:
     expected_tables = {
         "app.action_items",
         "app.application_status_history",
         "app.applications",
+        "app.companies",
+        "app.company_aliases",
+        "app.company_domains",
         "app.event_history",
         "app.mail_sync_states",
         "app.microsoft_authorization_flows",
@@ -20,6 +23,18 @@ def test_phase_three_tables_use_application_schema() -> None:
 
     assert set(Base.metadata.tables) == expected_tables
     assert all(table.schema == "app" for table in Base.metadata.sorted_tables)
+
+
+def test_application_company_identity_uses_company_id_and_raw_evidence() -> None:
+    applications = Base.metadata.tables["app.applications"]
+
+    assert "company_id" in applications.c
+    assert "raw_company_name" in applications.c
+    assert "company_name" not in applications.c
+    assert "company_normalized" not in applications.c
+    company_foreign_key = next(iter(applications.c.company_id.foreign_keys))
+    assert company_foreign_key.target_fullname == "app.companies.id"
+    assert company_foreign_key.ondelete == "RESTRICT"
 
 
 def test_idempotency_constraints_are_named_and_present() -> None:

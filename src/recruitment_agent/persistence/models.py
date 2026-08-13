@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -192,16 +193,105 @@ class SecureLinkModel(TimestampMixin, Base):
     display_text: Mapped[str | None] = mapped_column(Text)
 
 
-class ApplicationModel(TimestampMixin, Base):
-    __tablename__ = "applications"
+class CompanyModel(TimestampMixin, Base):
+    """Canonical company identity independent from extraction text."""
+
+    __tablename__ = "companies"
     __table_args__ = (
-        CheckConstraint("length(company_name) > 0", name="company_name_not_empty"),
-        Index("ix_applications_normalized_identity", "company_normalized", "role_normalized"),
+        CheckConstraint("length(canonical_name) > 0", name="canonical_name_not_empty"),
+        CheckConstraint(
+            "length(normalized_canonical_name) > 0",
+            name="normalized_canonical_name_not_empty",
+        ),
+        CheckConstraint("length(display_name) > 0", name="display_name_not_empty"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
-    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    company_normalized: Mapped[str] = mapped_column(String(255), nullable=False)
+    canonical_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_canonical_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+    )
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    parent_company_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.companies.id",
+            ondelete="RESTRICT",
+            name="fk_companies_parent_company",
+        ),
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+
+
+class CompanyAliasModel(Base):
+    """Exact normalized company name mapped to a canonical identity."""
+
+    __tablename__ = "company_aliases"
+    __table_args__ = (
+        CheckConstraint("length(alias) > 0", name="alias_not_empty"),
+        CheckConstraint("length(normalized_alias) > 0", name="normalized_alias_not_empty"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
+        Index("ix_company_aliases_normalized_alias", "normalized_alias"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.companies.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    normalized_alias: Mapped[str] = mapped_column(String(255), primary_key=True)
+    alias: Mapped[str] = mapped_column(String(255), nullable=False)
+    language: Mapped[str | None] = mapped_column(String(16))
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class CompanyDomainModel(Base):
+    """Exact sender hostname mapped to a canonical identity."""
+
+    __tablename__ = "company_domains"
+    __table_args__ = (
+        CheckConstraint("length(domain) > 0", name="domain_not_empty"),
+        CheckConstraint("domain = lower(domain)", name="domain_lowercase"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
+        Index("ix_company_domains_domain", "domain"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.companies.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    domain: Mapped[str] = mapped_column(String(255), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ApplicationModel(TimestampMixin, Base):
+    __tablename__ = "applications"
+    __table_args__ = (
+        CheckConstraint(
+            "raw_company_name IS NULL OR length(btrim(raw_company_name)) > 0",
+            name="raw_company_name_not_empty",
+        ),
+        Index("ix_applications_company_role", "company_id", "role_normalized"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.companies.id",
+            ondelete="RESTRICT",
+            name="fk_applications_company",
+        ),
+        index=True,
+    )
+    raw_company_name: Mapped[str | None] = mapped_column(String(255))
     role_name: Mapped[str | None] = mapped_column(String(255))
     role_normalized: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(
