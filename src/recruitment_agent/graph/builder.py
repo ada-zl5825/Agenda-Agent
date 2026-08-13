@@ -1,4 +1,4 @@
-"""Explicit StateGraph construction for Phase 5 mail processing."""
+"""Explicit StateGraph construction for Phase 5/6 mail processing."""
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -18,6 +18,8 @@ from recruitment_agent.graph.nodes import (
     request_review,
     resolve_application,
     resolve_existing_event,
+    route_after_application_resolution,
+    route_after_event_resolution,
     route_after_prefilter,
     route_after_validation,
     sanitize_content,
@@ -85,8 +87,22 @@ def build_recruitment_graph(
             "finalize_processing": "finalize_processing",
         },
     )
-    builder.add_edge("resolve_application", "resolve_existing_event")
-    builder.add_edge("resolve_existing_event", "plan_state_transition")
+    builder.add_conditional_edges(
+        "resolve_application",
+        route_after_application_resolution,
+        {
+            "request_review": "request_review",
+            "resolve_existing_event": "resolve_existing_event",
+        },
+    )
+    builder.add_conditional_edges(
+        "resolve_existing_event",
+        route_after_event_resolution,
+        {
+            "request_review": "request_review",
+            "plan_state_transition": "plan_state_transition",
+        },
+    )
     builder.add_edge("plan_state_transition", "persist_domain_changes")
     builder.add_edge("persist_domain_changes", "sync_calendar_placeholder")
     builder.add_edge("sync_calendar_placeholder", "finalize_processing")

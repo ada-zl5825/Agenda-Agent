@@ -468,7 +468,14 @@ class ApplicationStatusHistoryModel(Base):
     from_status: Mapped[str | None] = mapped_column(String(32))
     to_status: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(255))
-    source_email_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    source_email_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.source_emails.id",
+            ondelete="SET NULL",
+            name="fk_application_status_history_source_email",
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -524,7 +531,14 @@ class EventHistoryModel(Base):
     previous_timezone: Mapped[str | None] = mapped_column(String(64))
     previous_status: Mapped[str | None] = mapped_column(String(20))
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    source_email_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    source_email_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.source_emails.id",
+            ondelete="SET NULL",
+            name="fk_event_history_source_email",
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -550,7 +564,16 @@ class ActionItemModel(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    source_email_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    source_email_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "app.source_emails.id",
+            ondelete="CASCADE",
+            name="fk_action_items_source_email",
+        ),
+        nullable=False,
+        index=True,
+    )
     type: Mapped[str] = mapped_column(String(40), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,4 +1,4 @@
-"""Production composition boundary for Phase 5 start and resume operations."""
+"""Production composition boundary for Phase 5/6 start and resume operations."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,6 +8,7 @@ from uuid import UUID
 import httpx
 
 from recruitment_agent.application.clock import SystemClock
+from recruitment_agent.application.domain_processing import RecruitmentDomainService
 from recruitment_agent.application.entity_resolution import (
     RecruitmentEntityResolutionService,
 )
@@ -48,6 +49,7 @@ from recruitment_agent.persistence.companies import SqlAlchemyCompanyRepository
 from recruitment_agent.persistence.company_resolutions import (
     SqlAlchemyCompanyResolutionAuditRepository,
 )
+from recruitment_agent.persistence.domain_processing import SqlAlchemyRecruitmentDomainStore
 from recruitment_agent.persistence.microsoft_auth import SqlAlchemyMicrosoftAuthStore
 from recruitment_agent.persistence.secure_links import SqlAlchemySecureLinkRepository
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
@@ -153,6 +155,9 @@ async def _production_workflow_runner() -> AsyncIterator[RecruitmentWorkflowRunn
                 persistence = SqlAlchemyWorkflowPersistence(session_factory)
                 context = RecruitmentGraphContext(
                     activities=activities,
+                    domain=RecruitmentDomainService(
+                        SqlAlchemyRecruitmentDomainStore(session_factory)
+                    ),
                     persistence=persistence,
                     calendar=NoOpCalendarSync(),
                     clock=clock,

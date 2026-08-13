@@ -1,4 +1,4 @@
-"""Provider-neutral contracts persisted by the Phase 5 workflow."""
+"""Provider-neutral contracts persisted by the Phase 5/6 workflow."""
 
 from dataclasses import dataclass
 from datetime import datetime

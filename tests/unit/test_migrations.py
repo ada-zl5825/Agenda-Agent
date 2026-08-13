@@ -12,3 +12,11 @@ def test_phase_five_downgrade_compiles_for_postgresql() -> None:
         "20260813_0006:20260813_0005",
         sql=True,
     )
+
+
+def test_phase_six_downgrade_compiles_for_postgresql() -> None:
+    command.downgrade(
+        Config("alembic.ini"),
+        "20260813_0007:20260813_0006",
+        sql=True,
+    )

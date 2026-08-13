@@ -1,10 +1,17 @@
-"""Typed external ports used by Phase 5 workflow nodes."""
+"""Typed external ports used by Phase 5/6 workflow nodes."""
 
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from recruitment_agent.domain.ports import Clock
+from recruitment_agent.domain.processing import (
+    ApplicationResolution,
+    DomainMutationResult,
+    DomainTransitionPlan,
+    EventResolution,
+    RecruitmentEvidence,
+)
 from recruitment_agent.graph.contracts import (
     CalendarPlaceholderResult,
     ExtractionAudit,
@@ -32,6 +39,34 @@ class RecruitmentWorkflowActivities(Protocol):
         self,
         prepared: SafePreparedEmail,
     ) -> WorkflowExtractionResult: ...
+
+
+class RecruitmentDomainActivities(Protocol):
+    async def resolve_application(
+        self,
+        evidence: RecruitmentEvidence,
+        *,
+        selected_application_id: UUID | None = None,
+        force_create: bool = False,
+    ) -> ApplicationResolution: ...
+
+    async def resolve_event(
+        self,
+        evidence: RecruitmentEvidence,
+        application: ApplicationResolution,
+        *,
+        selected_event_id: UUID | None = None,
+        treat_as_new: bool = False,
+    ) -> EventResolution: ...
+
+    def plan_transition(
+        self,
+        evidence: RecruitmentEvidence,
+        application: ApplicationResolution,
+        event: EventResolution,
+    ) -> DomainTransitionPlan: ...
+
+    async def persist(self, plan: DomainTransitionPlan) -> DomainMutationResult: ...
 
 
 class WorkflowPersistence(Protocol):

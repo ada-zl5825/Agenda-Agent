@@ -1,4 +1,4 @@
-# Test Plan through Phase 5
+# Test Plan through Phase 6
 
 The automated suite covers:
 
@@ -47,14 +47,21 @@ The automated suite covers:
   timezone ambiguity, Application ambiguity and datetime conflict;
 - invalid Review choice loops, typed resume, stable Review identity and optimistic idempotency;
 - graph reconstruction with the same checkpointer and processing-run/thread identity;
-- Phase 6/7 placeholders produce no domain or Calendar side effect;
+- exact application resolution, explicit application ambiguity, and reviewed create-new behavior;
+- semantic event/action duplicate detection across repeated processing;
+- deterministic status transitions and terminal-state downgrade prevention;
+- single-target reschedule updates, ambiguous reschedule interrupts, and old-value history;
+- unresolved required datetime/timezone evidence produces a zero-mutation plan;
+- Phase 6 transition plans retain opaque link refs and never plaintext secure URLs;
+- the Phase 7 Calendar placeholder produces no external side effect;
 - graph-state, object-representation and failure-audit privacy regressions; and
 - isolated PostgreSQL checkpoint connection configuration.
 
 The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
 They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency,
-legacy application company-name migration, Phase 4.5 audit/candidate idempotency, and a Phase 5
-PostgreSQL interrupt/close/reopen/resume flow with workflow audit and checkpoint assertions.
+legacy application company-name migration, Phase 4.5 audit/candidate idempotency, a Phase 5
+PostgreSQL interrupt/close/reopen/resume flow, and Phase 6 retry/reschedule persistence with
+application/event/action/history cardinality assertions.
 
 The Phase 4 contract suite is provider-independent and runs without network access or Azure
 credentials. It validates saved structured outputs against the current Pydantic schema and the

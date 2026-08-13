@@ -1,4 +1,4 @@
-# Domain Model through Phase 5
+# Domain Model through Phase 6
 
 `Application` remains the recruitment aggregate root. `RecruitmentEvent` and `ActionItem` belong to
 an application and use explicit status enums. Email and future model output are evidence, not domain
@@ -75,10 +75,30 @@ calendar, email or secure-link mutation.
 Repository protocols live in the domain package. SQLAlchemy models and seed execution are separate
 persistence/composition concerns and never leak into the domain contracts.
 
-## Phase 5 workflow boundary
+## Phase 6 domain processing
 
-LangGraph state remains execution state rather than a domain aggregate. Phase 5 stores a durable
-`processing_run`, the validated structured extraction audit and typed `review_item` records, but its
-Application/Event resolution and mutation nodes are explicit placeholders. Consequently, a graph
-completion cannot yet create or change an Application, RecruitmentEvent, ActionItem or calendar
-record. Those domain mutations remain Phase 6/7 work behind typed ports.
+LangGraph state remains execution state rather than a domain aggregate. PostgreSQL applications,
+events, actions, and append-only histories are the source of truth. Phase 6 adds a provider-neutral
+service that turns validated evidence into a checkpoint-safe intent and asks one atomic persistence
+port to revalidate and apply it.
+
+Application resolution first honors an existing source-email link, then uses canonical
+`company_id` plus deterministically normalized role. One open match is selected, no match plans a
+new application, and multiple matches interrupt with `APPLICATION_AMBIGUITY`. Missing roles use all
+open applications for the canonical company and therefore review rather than silently creating a
+duplicate. Unresolved companies require an explicit create-new review decision; they never create a
+canonical company row.
+
+Semantic event fingerprints contain canonical company identity, normalized role, event type,
+round, normalized event time, and deadline. Replaying either the same email or equivalent evidence
+reuses the existing event and action-item keys. A reschedule searches active interview events,
+updates the one deterministic target in place, and records its previous time/status in
+`event_history`. Zero or multiple plausible targets interrupt with `UNCERTAIN_RESCHEDULE`.
+
+Application transitions are monotonic for ordinary progress, preserve withdrawn applications, and
+do not let assessment/interview evidence downgrade offer or rejection states. Every actual status
+change records `application_status_history`. Assessment/interview actions keep only an encrypted
+`secure_link_id`; graph state and transition plans contain the opaque link reference. Evidence with
+an unresolved required datetime or timezone produces a zero-mutation plan.
+
+Calendar synchronization remains the typed Phase 7 no-op.
