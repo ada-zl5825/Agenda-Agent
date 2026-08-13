@@ -36,6 +36,12 @@ param tokenCacheEncryptionKey string
 @description('Base64-encoded 32-byte key used exclusively to encrypt recruitment action links.')
 param linkEncryptionKey string
 
+@secure()
+@minLength(44)
+@maxLength(44)
+@description('Independent Base64-encoded 32-byte HMAC key for browser sessions and CSRF.')
+param webSessionSigningKey string
+
 @description('IANA timezone used for user-facing schedules.')
 param userTimezone string = 'Europe/London'
 
@@ -57,6 +63,20 @@ param calendarInterviewPlaceholderMinutes int = 60
 @minValue(1)
 @maxValue(1440)
 param calendarAssessmentPlaceholderMinutes int = 30
+
+@description('Enable Phase 8 Daily Brief only after migration and Mail.Send re-consent.')
+param dailyBriefEnabled bool = false
+
+@description('Mailbox address that receives the deterministic Daily Brief.')
+param dailyBriefRecipient string = ''
+
+@description('Hourly UTC wake-up; application code applies the DST-aware local delivery hour.')
+param dailyBriefSchedule string = '0 0 * * * *'
+
+@minValue(0)
+@maxValue(23)
+@description('Daily Brief delivery hour in USER_TIMEZONE.')
+param dailyBriefLocalHour int = 8
 
 @description('Enable Phase 4 structured recruitment extraction.')
 param llmEnabled bool = false
@@ -88,6 +108,7 @@ var logAnalyticsName = 'log-agenda-${resourceToken}'
 var applicationInsightsName = 'appi-agenda-${resourceToken}'
 var keyVaultName = 'kv-agenda-${take(resourceToken, 13)}'
 var linkEncryptionSecretName = 'recruitment-link-encryption-key'
+var webSessionSigningSecretName = 'web-session-signing-key'
 var virtualNetworkName = 'vnet-agenda-${resourceToken}'
 var postgresServerName = 'psql-agenda-${resourceToken}'
 var postgresDatabaseName = 'recruitment'
@@ -392,6 +413,14 @@ resource linkEncryptionKeyValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   }
 }
 
+resource webSessionSigningKeyValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: webSessionSigningSecretName
+  properties: {
+    value: webSessionSigningKey
+  }
+}
+
 resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
   location: location
@@ -482,6 +511,13 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       CALENDAR_SYNC_ENABLED: string(calendarSyncEnabled)
       CALENDAR_INTERVIEW_PLACEHOLDER_MINUTES: string(calendarInterviewPlaceholderMinutes)
       CALENDAR_ASSESSMENT_PLACEHOLDER_MINUTES: string(calendarAssessmentPlaceholderMinutes)
+      DAILY_BRIEF_ENABLED: string(dailyBriefEnabled)
+      DAILY_BRIEF_RECIPIENT: dailyBriefRecipient
+      DAILY_BRIEF_SCHEDULE: dailyBriefSchedule
+      DAILY_BRIEF_LOCAL_HOUR: string(dailyBriefLocalHour)
+      PUBLIC_APP_BASE_URL: 'https://${functionApp.properties.defaultHostName}'
+      WEB_SESSION_SIGNING_KEY: '@Microsoft.KeyVault(SecretUri=${webSessionSigningKeyValue.properties.secretUriWithVersion})'
+      WEB_SESSION_TTL_SECONDS: '28800'
       AzureWebJobsStorage__accountName: storage.name
       AzureWebJobsStorage__credential: 'managedidentity'
       AzureWebJobsStorage__clientId: runtimeIdentity.properties.clientId

@@ -1,12 +1,14 @@
 # Recruitment Inbox Agent
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4、Phase 4.5 与 Phase 5。
+Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4、Phase 4.5、Phase 5、Phase 6、
+Phase 7 与 Phase 8。
 
 ## Phase 1 已实现
 
 - Microsoft OAuth 2.0 Authorization Code Flow（MSAL）
-- 仅申请 `User.Read` 与 `Mail.Read`；不申请 `Mail.ReadWrite`
+- 当前 delegated scopes 为 `User.Read`、`Mail.Read`、`Calendars.ReadWrite` 与 `Mail.Send`；
+  始终不申请 `Mail.ReadWrite`
 - AES-256-GCM 加密的持久化 MSAL token cache，带乐观并发版本
 - 单次、限时、加密保存的 OAuth flow state
 - 基于 `httpx` 和 Pydantic DTO 的 Microsoft Graph 客户端
@@ -87,7 +89,7 @@ Phase 4.5 不匹配 Application、不引入 LangGraph、不创建日历、不发
 - 时区歧义、Application 歧义和日期时间冲突通过 `interrupt()` 暂停，并用 typed decision 恢复
 - checkpoint 只包含脱敏文本、opaque link ref、结构化证据和数据库 ID
 - 生产组合入口连接 Graph、Key Vault、Azure 模型与 PostgreSQL，并正确释放异步资源
-- Phase 6 的领域变更与 Phase 7 的 Calendar 同步仍为 typed no-op，不会提前产生副作用
+- Phase 5 的原始边界用 typed no-op 隔离当时尚未实现的领域与 Calendar 副作用
 
 Phase 5 不实现 Review 图形页面、Daily Brief、Application/Event 状态机或 Calendar 写入。
 数据库 head 为 `20260813_0006`。
@@ -144,6 +146,13 @@ uv --cache-dir .uv-cache export --format requirements-txt --no-dev --no-hashes -
 - `AZURE_OPENAI_REQUEST_TIMEOUT_SECONDS=30`
 - `AZURE_OPENAI_MAX_RETRY_ATTEMPTS=3`
 - `MAIL_SYNC_SCHEDULE=0 */10 * * * *`
+- `DAILY_BRIEF_ENABLED=false`（完成迁移和重新授权后再设为 `true`）
+- `DAILY_BRIEF_RECIPIENT`
+- `DAILY_BRIEF_SCHEDULE=0 0 * * * *`（UTC 每小时唤醒）
+- `DAILY_BRIEF_LOCAL_HOUR=8`（按 `USER_TIMEZONE` 过滤，自动适配 DST）
+- `PUBLIC_APP_BASE_URL`
+- `WEB_SESSION_SIGNING_KEY`（独立 Base64 32 字节密钥，不得复用 token-cache key）
+- `WEB_SESSION_TTL_SECONDS=28800`
 - `AzureWebJobsStorage__accountName`
 - `AzureWebJobsStorage__credential=managedidentity`
 
@@ -195,7 +204,25 @@ uv run pytest -m integration
   recreated silently.
 - Apply Alembic head `20260813_0008`, grant delegated `Calendars.ReadWrite`, reauthorize the account,
   then set `CALENDAR_SYNC_ENABLED=true`. It remains false by default.
-- Phase 8 Daily Brief, Mail.Send, and the graphical Review UI are not implemented in this phase.
+- Phase 8 在此基础上提供 Daily Brief、`Mail.Send` 和图形化 Review；Calendar 边界保持不变。
+
+## Phase 8 implemented
+
+- 确定性 Daily Brief 查询和渲染覆盖 `TODAY`、`NEXT 48 HOURS`、Assessment、Interview、
+  Action Required、New Updates、Waiting for Result 与 Needs Review；整个过程不调用 LLM。
+- 每个 Needs Review 项只使用绝对路径 `/reviews/{review_id}` 深链，主操作固定为
+  `Open Review`；URL 不携带决策、候选项或敏感查询参数。
+- 图形化 Review 队列和详情页由短期 HMAC 会话保护；详情展示来源元数据、Application、
+  提取与时间证据、校验发现、现值/拟议值、候选匹配、安全链接元数据、副作用预览、
+  决策表单和审计结果。
+- Review GET 无副作用；POST 使用与 session、review ID、version 绑定的 CSRF，并在服务端
+  校验允许选项、typed override 和乐观并发后才恢复 LangGraph。
+- 普通 ActionItem 链接只在最终 Brief 渲染边界解密；Review 页面从不解密。含明文链接的
+  HTML 不持久化，数据库 `daily_briefs` 只保存每日发送状态和安全错误码。
+- Graph `POST /me/sendMail` 只发送生成的 Brief，无附件、原始邮件正文或 HTML；同一天只
+  认领一次，传输/5xx 结果不确定时标记 `uncertain` 且不自动重发。
+- Azure Timer 每小时 UTC 唤醒，并只在 `USER_TIMEZONE` 的本地 08 点发送，以适配 Flex
+  Consumption 不支持 Timer 时区设置的限制；迁移 head 为 `20260813_0009`，功能默认关闭。
 
 完整边界与后续 phase 见
 [最终技术设计](docs/01_FINAL_TECHNICAL_DESIGN.md) 和 [AGENTS.md](AGENTS.md)。

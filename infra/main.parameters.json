@@ -20,6 +20,9 @@
     "calendarSyncEnabled": {
       "value": false
     },
+    "dailyBriefEnabled": {
+      "value": false
+    },
     "llmEnabled": {
       "value": true
     }

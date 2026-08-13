@@ -4,12 +4,13 @@ The models are persistence representations, not domain entities. Mapping and
 repository implementations are added alongside concrete use cases.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -554,6 +555,31 @@ class CalendarLinkModel(TimestampMixin, Base):
     calendar_event_id: Mapped[str] = mapped_column(String(512), nullable=False)
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DailyBriefModel(TimestampMixin, Base):
+    """Idempotency audit only; rendered content and decrypted links are never persisted."""
+
+    __tablename__ = "daily_briefs"
+    __table_args__ = (
+        UniqueConstraint("account_id", "brief_date", name="uq_daily_briefs_account_date"),
+        CheckConstraint("attempt_count >= 1", name="attempt_count_positive"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    brief_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    dispatch_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
 
 
 class EventHistoryModel(Base):

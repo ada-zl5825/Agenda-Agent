@@ -1,4 +1,4 @@
-# Operations through Phase 7
+# Operations through Phase 8
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -85,8 +85,9 @@ Phase 7 adds migration `20260813_0008` and delegated Microsoft Graph permission
 uv run alembic upgrade head
 ```
 
-For a fresh Entra app registration, `bootstrap-azure.ps1` requests `User.Read`, `Mail.Read`, and
-`Calendars.ReadWrite`. For an existing registration, add the delegated `Calendars.ReadWrite`
+For a fresh Entra app registration, `bootstrap-azure.ps1` requests `User.Read`, `Mail.Read`,
+`Calendars.ReadWrite`, and `Mail.Send`. For an existing registration, add the delegated
+`Calendars.ReadWrite`
 permission directly in Entra/Azure Portal or with Azure CLI, then visit `/auth/login` and complete
 consent again so the encrypted MSAL cache contains a token for the expanded scopes. Do not rerun the
 whole bootstrap merely to add this permission: that script intentionally rotates the Microsoft
@@ -101,8 +102,33 @@ durations are `CALENDAR_INTERVIEW_PLACEHOLDER_MINUTES=60` and
 Calendar calls use bounded Graph retries, `Retry-After`, one forced token refresh after 401,
 immutable provider IDs, and create `transactionId` values derived from deterministic event content.
 If a user deletes a linked Outlook event, replacement is blocked behind
-`UNSAFE_CALENDAR_UPDATE` Review. Phase 7 does not send Daily Brief email and does not request
-`Mail.Send`.
+`UNSAFE_CALENDAR_UPDATE` Review. Daily Brief delivery remains a separate Phase 8 service.
+
+## Phase 8 Daily Brief and graphical Review
+
+Phase 8 adds migration `20260813_0009`, delegated Graph permission `Mail.Send`, a Daily Brief timer,
+and authenticated graphical Review routes. Apply the migration first. For an existing Entra app,
+add delegated `Mail.Send` and complete `/auth/login` again so the encrypted MSAL cache contains a
+token for the expanded scopes. `Mail.ReadWrite` remains forbidden.
+
+Configure a dedicated Base64-encoded random 32-byte `WEB_SESSION_SIGNING_KEY`; it must not reuse
+`TOKEN_CACHE_ENCRYPTION_KEY` or the action-link key. Configure `DAILY_BRIEF_RECIPIENT` and keep
+`DAILY_BRIEF_ENABLED=false` until migration and reauthorization are complete. The deployed Function
+hostname supplies `PUBLIC_APP_BASE_URL`; local environments must set it explicitly. Linux Flex
+Consumption does not support `WEBSITE_TIME_ZONE` or `TZ`, so the six-field NCRONTAB schedule
+`0 0 * * * *` wakes hourly in UTC. Application code sends only when `USER_TIMEZONE` reaches
+`DAILY_BRIEF_LOCAL_HOUR=8`, including across daylight-saving transitions.
+
+The timer claims at most one send per Microsoft connection and local date. A Graph 202 response is
+recorded as accepted. A network or Graph 5xx outcome is recorded as uncertain and is never retried
+automatically because the message might already have been accepted. The `app.daily_briefs` audit
+stores no rendered HTML, recipient, original email body, or decrypted URL.
+
+`GET /brief/today`, `GET /reviews`, and `GET /reviews/{review_id}` require the signed browser
+session established by the Microsoft callback. Review detail GETs are read-only. Resolution POSTs
+require a review/version-bound CSRF token, a current optimistic-concurrency version, and a typed
+server-validated decision before LangGraph resumes. Review pages expose only secure-link reference,
+type, and domain metadata; they never decrypt action URLs.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:
@@ -127,8 +153,8 @@ Production infrastructure is defined in `infra/main.bicep`. It creates:
 - an Azure Functions Flex Consumption app running Python 3.12;
 - a managed-identity-only Storage account for host state and deployment packages;
 - workspace-based Application Insights and Log Analytics;
-- a Key Vault containing the database URL, Microsoft client secret, token-cache key, and a separate
-  action-link encryption key;
+- a Key Vault containing the database URL, Microsoft client secret, token-cache key, a separate
+  action-link encryption key, and a separate web-session signing key;
 - a PostgreSQL Flexible Server on a delegated private subnet; and
 - a VNet-integrated Function App with no public route to PostgreSQL.
 
@@ -143,9 +169,9 @@ registration, and the GitHub `production` environment configuration:
 The command requires Azure CLI and GitHub CLI authentication. It generates all application secrets
 locally and writes them directly to GitHub environment secrets. Re-running the command rotates the
 Microsoft client secret and application encryption secrets, so only run it intentionally. Existing
-installations must add the `LINK_ENCRYPTION_KEY` GitHub `production` environment secret before the
-next deployment; it must be a base64-encoded random 32-byte value and must not reuse the token-cache
-key.
+installations must add the `LINK_ENCRYPTION_KEY` and `WEB_SESSION_SIGNING_KEY` GitHub `production`
+environment secrets before the next deployment. Each must be an independent base64-encoded random
+32-byte value and neither may reuse the token-cache key.
 
 `deploy-azure.yml` runs only for this upstream repository after the `quality` workflow succeeds
 on `main`, or through a manual dispatch from `main`. Azure trusts the exact immutable GitHub OIDC

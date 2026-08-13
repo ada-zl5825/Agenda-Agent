@@ -1,0 +1,1 @@
+"""Authenticated web presentation boundary."""

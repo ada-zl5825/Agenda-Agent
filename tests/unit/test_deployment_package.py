@@ -95,3 +95,24 @@ def test_phase_seven_calendar_is_permissioned_but_disabled_by_default() -> None:
     assert "calendarSyncEnabled=${{ vars.CALENDAR_SYNC_ENABLED || 'false' }}" in workflow
     assert "1ec239c2-d7c9-4623-a91a-a9775856bb36" in bootstrap
     assert 'Set-GitHubVariable -Name "CALENDAR_SYNC_ENABLED" -Value "false"' in bootstrap
+
+
+def test_phase_eight_daily_brief_is_secure_and_disabled_by_default() -> None:
+    infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+    bootstrap = Path("scripts/bootstrap-azure.ps1").read_text(encoding="utf-8")
+
+    assert "param dailyBriefEnabled bool = false" in infrastructure
+    assert "DAILY_BRIEF_SCHEDULE: dailyBriefSchedule" in infrastructure
+    assert "DAILY_BRIEF_LOCAL_HOUR: string(dailyBriefLocalHour)" in infrastructure
+    assert "param dailyBriefSchedule string = '0 0 * * * *'" in infrastructure
+    assert "PUBLIC_APP_BASE_URL: 'https://${functionApp.properties.defaultHostName}'" in (
+        infrastructure
+    )
+    assert "var webSessionSigningSecretName = 'web-session-signing-key'" in infrastructure
+    assert "WEB_SESSION_SIGNING_KEY: '@Microsoft.KeyVault(" in infrastructure
+    assert "webSessionSigningKey=${{ secrets.WEB_SESSION_SIGNING_KEY }}" in workflow
+    assert "dailyBriefEnabled=${{ vars.DAILY_BRIEF_ENABLED || 'false' }}" in workflow
+    assert "e383f46e-2787-4529-855e-0e479a3ffac0" in bootstrap
+    assert 'Set-GitHubVariable -Name "DAILY_BRIEF_ENABLED" -Value "false"' in bootstrap
+    assert 'Set-GitHubSecret -Name "WEB_SESSION_SIGNING_KEY"' in bootstrap
