@@ -1,4 +1,4 @@
-# Domain Model through Phase 4.5
+# Domain Model through Phase 5
 
 `Application` remains the recruitment aggregate root. `RecruitmentEvent` and `ActionItem` belong to
 an application and use explicit status enums. Email and future model output are evidence, not domain
@@ -74,3 +74,11 @@ calendar, email or secure-link mutation.
 
 Repository protocols live in the domain package. SQLAlchemy models and seed execution are separate
 persistence/composition concerns and never leak into the domain contracts.
+
+## Phase 5 workflow boundary
+
+LangGraph state remains execution state rather than a domain aggregate. Phase 5 stores a durable
+`processing_run`, the validated structured extraction audit and typed `review_item` records, but its
+Application/Event resolution and mutation nodes are explicit placeholders. Consequently, a graph
+completion cannot yet create or change an Application, RecruitmentEvent, ActionItem or calendar
+record. Those domain mutations remain Phase 6/7 work behind typed ports.

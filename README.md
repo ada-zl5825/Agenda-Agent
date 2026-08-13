@@ -1,7 +1,7 @@
 # Recruitment Inbox Agent
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4 与 Phase 4.5。
+Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4、Phase 4.5 与 Phase 5。
 
 ## Phase 1 已实现
 
@@ -77,7 +77,20 @@ Phase 4 是无状态语义提取层，不写数据库、不解析 canonical comp
 - `INVALID` 提取结果不会进入解析；`NEEDS_REVIEW` 只记录确定性证据，不授权业务变更
 
 Phase 4.5 不匹配 Application、不引入 LangGraph、不创建日历、不发信，也不使用模糊匹配、
-向量搜索、外部搜索或 LLM 公司规范化。数据库 head 为 `20260813_0005`。
+向量搜索、外部搜索或 LLM 公司规范化。
+
+## Phase 5 已实现
+
+- 显式 `StateGraph` 节点与确定性路由覆盖邮件准备、提取、校验、Review 和最终处理
+- PostgreSQL `agent_checkpoint` schema 保存 durable checkpoint，稳定 run ID 同时作为 thread ID
+- `processing_runs`、`llm_extractions` 与 `review_items` 保存幂等执行和人工审核审计
+- 时区歧义、Application 歧义和日期时间冲突通过 `interrupt()` 暂停，并用 typed decision 恢复
+- checkpoint 只包含脱敏文本、opaque link ref、结构化证据和数据库 ID
+- 生产组合入口连接 Graph、Key Vault、Azure 模型与 PostgreSQL，并正确释放异步资源
+- Phase 6 的领域变更与 Phase 7 的 Calendar 同步仍为 typed no-op，不会提前产生副作用
+
+Phase 5 不实现 Review 图形页面、Daily Brief、Application/Event 状态机或 Calendar 写入。
+数据库 head 为 `20260813_0006`。
 
 ## 本地启动
 

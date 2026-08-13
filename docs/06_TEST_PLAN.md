@@ -1,4 +1,4 @@
-# Test Plan through Phase 4.5
+# Test Plan through Phase 5
 
 The automated suite covers:
 
@@ -42,17 +42,25 @@ The automated suite covers:
 - proof that the LangChain adapter receives only sanitized text, received time, prompt version and
   allowed opaque link references;
 - privacy-safe provider failures and representations; and
-- managed-identity Azure OpenAI deployment settings with no API key.
+- managed-identity Azure OpenAI deployment settings with no API key;
+- every Phase 5 route: happy path, unlikely prefilter, model irrelevance, invalid extraction,
+  timezone ambiguity, Application ambiguity and datetime conflict;
+- invalid Review choice loops, typed resume, stable Review identity and optimistic idempotency;
+- graph reconstruction with the same checkpointer and processing-run/thread identity;
+- Phase 6/7 placeholders produce no domain or Calendar side effect;
+- graph-state, object-representation and failure-audit privacy regressions; and
+- isolated PostgreSQL checkpoint connection configuration.
 
 The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
 They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency,
-legacy application company-name migration and Phase 4.5 audit/candidate idempotency.
+legacy application company-name migration, Phase 4.5 audit/candidate idempotency, and a Phase 5
+PostgreSQL interrupt/close/reopen/resume flow with workflow audit and checkpoint assertions.
 
 The Phase 4 contract suite is provider-independent and runs without network access or Azure
 credentials. It validates saved structured outputs against the current Pydantic schema and the
 deterministic validator. Live-model evals may be run separately, but cannot replace these contracts.
 
-Future Phase 5/8 review and Daily Brief tests must verify that every `NEEDS REVIEW` item has an
+Future Phase 8 review and Daily Brief tests must verify that every `NEEDS REVIEW` item has an
 authenticated `/reviews/{review_id}` graphical deep link; link preview or GET requests have no side
 effects; wrong-account access is denied; stale/double resolution is idempotent; allowed choices and
 typed overrides are server-validated; and no raw body, PII, checkpoint state or decrypted secure URL

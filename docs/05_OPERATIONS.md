@@ -1,4 +1,4 @@
-# Operations through Phase 4.5
+# Operations through Phase 5
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -34,6 +34,28 @@ Set `LLM_ENABLED=false` for local/test processes that should not call the model.
 enables it after the endpoint and deployment variables are supplied. A model invocation failure is
 retry-bounded. The Phase 4.5 audit write is safe to retry because its ID is derived from the complete
 deterministic source-email outcome and PostgreSQL ignores duplicate attempt and candidate keys.
+
+## Phase 5 durable workflow
+
+Phase 5 adds migration `20260813_0006`. Apply it before starting or resuming mail-processing runs.
+It creates `app.processing_runs`, `app.llm_extractions`, `app.review_items` and an isolated
+`agent_checkpoint` schema containing the table layout required by the locked
+`langgraph-checkpoint-postgres` version.
+
+```text
+uv run alembic upgrade head
+```
+
+Alembic owns initial checkpoint table creation; application startup must not call checkpointer
+`setup()` independently. Upgrade the package and its Alembic table definitions in the same reviewed
+change. The production composition opens a PostgreSQL saver with `search_path=agent_checkpoint`,
+uses the processing-run UUID as the stable thread ID, and closes the Graph client, Key Vault client,
+model credential, checkpointer and SQLAlchemy engine after each invocation.
+
+`run_mail_processing_job` starts one already-ingested source email and
+`resume_mail_processing_job` resumes one typed Review decision. Phase 5 intentionally does not add a
+second timer that selects pending emails and does not expose a Review mutation route; those require
+the later scheduling and authenticated graphical Review phases.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:

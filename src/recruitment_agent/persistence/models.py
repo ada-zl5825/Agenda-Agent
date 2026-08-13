@@ -23,6 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from recruitment_agent.domain.enums import ActionStatus, ApplicationStatus, EventStatus
@@ -334,6 +335,91 @@ class CompanyResolutionCandidateModel(Base):
         ForeignKey("app.companies.id", ondelete="RESTRICT"),
         primary_key=True,
     )
+
+
+class ProcessingRunModel(Base):
+    """Durable audit row for one LangGraph thread."""
+
+    __tablename__ = "processing_runs"
+    __table_args__ = (
+        CheckConstraint("length(graph_thread_id) > 0", name="graph_thread_id_not_empty"),
+        CheckConstraint("length(current_stage) > 0", name="current_stage_not_empty"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    source_email_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.source_emails.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    graph_thread_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    current_stage: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_deployment: Mapped[str | None] = mapped_column(String(255))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_detail_sanitized: Mapped[str | None] = mapped_column(String(255))
+
+
+class LlmExtractionModel(Base):
+    """Validated structured output only; prompts and raw email content are forbidden."""
+
+    __tablename__ = "llm_extractions"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    processing_run_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.processing_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    source_email_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.source_emails.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    extraction: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    validation: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    company_resolution: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    role_resolution: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    company_resolution_audit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.company_resolution_attempts.id", ondelete="SET NULL"),
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ReviewItemModel(Base):
+    """Typed human decision request; no checkpoint payload or private email body."""
+
+    __tablename__ = "review_items"
+    __table_args__ = (
+        CheckConstraint("length(reason) > 0", name="reason_not_empty"),
+        CheckConstraint("length(question) > 0", name="question_not_empty"),
+        CheckConstraint("version >= 1", name="version_positive"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    processing_run_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.processing_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    review_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    allowed_choices: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    resolution: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ApplicationModel(TimestampMixin, Base):
