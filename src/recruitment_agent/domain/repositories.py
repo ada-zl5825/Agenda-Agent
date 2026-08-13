@@ -7,6 +7,7 @@ from uuid import UUID
 
 from recruitment_agent.domain.action import ActionItem
 from recruitment_agent.domain.application import Application
+from recruitment_agent.domain.company import Company, CompanySeed
 from recruitment_agent.domain.event import RecruitmentEvent
 
 
@@ -18,9 +19,27 @@ class ApplicationRepository(Protocol):
     async def find_open_by_identity(
         self,
         *,
-        company_name: str,
+        company_id: UUID,
         role_name: str | None,
     ) -> Sequence[Application]: ...
+
+
+class CompanyRepository(Protocol):
+    async def get(self, company_id: UUID) -> Company | None: ...
+
+    async def find_by_normalized_canonical_name(
+        self,
+        normalized_name: str,
+    ) -> Sequence[Company]: ...
+
+    async def find_by_normalized_alias(
+        self,
+        normalized_alias: str,
+    ) -> Sequence[Company]: ...
+
+    async def find_by_domain(self, domain: str) -> Sequence[Company]: ...
+
+    async def upsert_seed(self, seed: CompanySeed) -> Company: ...
 
 
 class RecruitmentEventRepository(Protocol):

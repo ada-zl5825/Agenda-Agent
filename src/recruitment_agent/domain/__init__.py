@@ -2,6 +2,20 @@
 
 from recruitment_agent.domain.action import ActionItem
 from recruitment_agent.domain.application import Application
+from recruitment_agent.domain.company import (
+    Company,
+    CompanyAlias,
+    CompanyDataSource,
+    CompanyDomain,
+    CompanyEntityType,
+    CompanyResolution,
+    CompanyResolutionMethod,
+    CompanyResolutionStatus,
+    CompanyStatus,
+    RawCompanyRole,
+    normalize_company_name,
+)
+from recruitment_agent.domain.company_resolution import CompanyResolver
 from recruitment_agent.domain.enums import (
     ActionStatus,
     ActionType,
@@ -24,12 +38,24 @@ __all__ = [
     "ActionType",
     "Application",
     "ApplicationStatus",
+    "Company",
+    "CompanyAlias",
+    "CompanyDataSource",
+    "CompanyDomain",
+    "CompanyEntityType",
+    "CompanyResolution",
+    "CompanyResolutionMethod",
+    "CompanyResolutionStatus",
+    "CompanyResolver",
+    "CompanyStatus",
     "EventStatus",
     "MailSyncState",
     "MailSyncStatus",
+    "RawCompanyRole",
     "RecruitmentEvent",
     "RecruitmentEventType",
     "SourceEmail",
     "SourceEmailCandidate",
     "SourceEmailProcessingStatus",
+    "normalize_company_name",
 ]

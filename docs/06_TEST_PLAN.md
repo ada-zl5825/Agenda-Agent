@@ -1,4 +1,4 @@
-# Test Plan through Phase 3
+# Test Plan through Phase 3.5
 
 The automated suite covers:
 
@@ -20,7 +20,14 @@ The automated suite covers:
 - AES-256-GCM round trips, context binding, domain validation and key-version lookup;
 - Key Vault timeout and secret-decoding behavior without secret-bearing representations;
 - secure email preparation with no plaintext URL or token in model text, metadata or logs; and
-- Alembic `secure_links` schema privacy and idempotent repository replacement.
+- Alembic `secure_links` schema privacy and idempotent repository replacement;
+- company/domain normalization and entity invariants;
+- exact canonical-name, alias and sender-domain company resolution;
+- unresolved, non-fuzzy and ambiguous company outcomes;
+- stable parent-child seed IDs and repeatable catalog seeding;
+- `Application.company_id` identity with unchanged `raw_company_name` evidence; and
+- Phase 3.5 migration preservation plus PostgreSQL repository lookups.
 
 The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
-They cover both Graph email metadata and encrypted secure-link persistence.
+They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency and
+legacy application company-name migration.
