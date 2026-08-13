@@ -11,7 +11,7 @@ from recruitment_agent.privacy.models import DiscoveredUrl, UrlSource
 
 
 class UrlDiscoverer:
-    """Preserve exact raw URLs transiently for the future Phase 3 encryption boundary."""
+    """Preserve exact raw URLs transiently for the Phase 3 encryption boundary."""
 
     _PLAIN_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
     _TRAILING_PUNCTUATION = ".,;:!?\uff0c\u3002\uff1b\uff1a\uff01\uff1f)]}\uff09\u3011\u300d\u300f"

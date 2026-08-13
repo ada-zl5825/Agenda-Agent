@@ -1,7 +1,7 @@
 # Recruitment Inbox Agent
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1，并正在交付 Phase 2：邮件归一化与确定性隐私处理。
+Phase 1、Phase 2 与 Phase 3。
 
 ## Phase 1 已实现
 
@@ -26,9 +26,19 @@ Phase 1，并正在交付 Phase 2：邮件归一化与确定性隐私处理。
 - 产生唯一允许跨越未来模型边界的 sanitized text
 - 基于中英文主题、正文和发件域名的高召回招聘邮件 prefilter
 
-Phase 2 不包含链接分类、链接加密或 SecureLink 持久化，这些属于 Phase 3；也不包含
-LLM、LangGraph、附件下载、日历或自动发信。数据库仍不保存原始邮件正文、HTML、
-附件或明文 OAuth token。
+## Phase 3 已实现
+
+- 在 HTML 清理前提取并稳定编号动作链接
+- 确定性分类 assessment、interview、meeting、confirmation、scheduling、
+  application portal、offer 与 general 链接
+- 模型可见文本仅包含链接类型、域名和 `ACTION_LINK_*` 不透明引用
+- 使用带上下文绑定的 AES-256-GCM 加密原始 URL
+- 通过异步 Azure Key Vault 客户端、托管身份和版本化密钥支持轮换
+- PostgreSQL `secure_links` 表仅保存密文、nonce、密钥版本和经批准的安全元数据
+- 相同邮件重复处理保持引用和数据库记录身份稳定
+
+Phase 3 不包含 LLM、LangGraph、附件下载、日历或自动发信。数据库仍不保存原始邮件
+正文、HTML、附件、明文 OAuth token 或明文动作 URL。
 
 ## 本地启动
 
@@ -64,12 +74,15 @@ Azure Functions 部署会读取根目录的 `requirements.txt`。需要设置：
 - `MICROSOFT_CONNECTION_ID`
 - `TOKEN_CACHE_ENCRYPTION_KEY`
 - `TOKEN_CACHE_ENCRYPTION_KEY_VERSION=v1`
+- `AZURE_KEY_VAULT_URL`
+- `LINK_ENCRYPTION_KEY_SECRET_NAME=recruitment-link-encryption-key`
+- `KEY_VAULT_REQUEST_TIMEOUT_SECONDS=10`
 - `MAIL_SYNC_SCHEDULE=0 */10 * * * *`
-- `AzureWebJobsStorage`
-- `FUNCTIONS_WORKER_RUNTIME=python`
+- `AzureWebJobsStorage__accountName`
+- `AzureWebJobsStorage__credential=managedidentity`
 
 部署前执行 `uv run alembic upgrade head`。Azure Functions 实例保持无状态；OAuth cache、
-授权 flow 与 delta cursor 均以密文或元数据形式保存在 PostgreSQL。
+授权 flow、delta cursor 与动作链接均以密文或元数据形式保存在 PostgreSQL。
 
 ## 验证
 

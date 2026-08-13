@@ -1,4 +1,4 @@
-# Test Plan through Phase 2
+# Test Plan through Phase 3
 
 The automated suite covers:
 
@@ -14,7 +14,13 @@ The automated suite covers:
 - email, phone, candidate, government, passport, and student-ID redaction;
 - subject and body sanitization before the future model boundary;
 - high-recall recruitment prefilter outcomes;
-- deterministic repeated preparation and the attachment-download prohibition.
+- deterministic repeated preparation and the attachment-download prohibition;
+- deterministic classification for every Phase 3 action-link type;
+- stable opaque references and sanitized link display metadata;
+- AES-256-GCM round trips, context binding, domain validation and key-version lookup;
+- Key Vault timeout and secret-decoding behavior without secret-bearing representations;
+- secure email preparation with no plaintext URL or token in model text, metadata or logs; and
+- Alembic `secure_links` schema privacy and idempotent repository replacement.
 
-The Docker-backed PostgreSQL migration/upsert test runs when `RUN_POSTGRES_INTEGRATION=1`.
-Phase 3 will add secure-link classification, encryption, repository, and link privacy tests.
+The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
+They cover both Graph email metadata and encrypted secure-link persistence.

@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from recruitment_agent.config.settings import MicrosoftSettings, Settings
+from recruitment_agent.config.settings import LinkEncryptionSettings, MicrosoftSettings, Settings
 
 
 def test_settings_accept_phase_zero_configuration() -> None:
@@ -55,3 +55,26 @@ def test_microsoft_settings_keep_secrets_out_of_repr() -> None:
 
     assert "client-secret-value" not in repr(settings)
     assert b64encode(b"k" * 32).decode() not in repr(settings)
+
+
+def test_link_encryption_settings_validate_key_vault_boundary() -> None:
+    settings = LinkEncryptionSettings(
+        azure_key_vault_url="https://vault.example.test",
+        link_encryption_key_secret_name="link-key",
+        key_vault_request_timeout_seconds=5,
+    )
+
+    assert str(settings.azure_key_vault_url) == "https://vault.example.test/"
+    assert settings.link_encryption_key_secret_name == "link-key"
+
+    with pytest.raises(ValidationError, match="must not be empty"):
+        LinkEncryptionSettings(
+            azure_key_vault_url="https://vault.example.test",
+            link_encryption_key_secret_name=" ",
+        )
+
+    with pytest.raises(ValidationError, match="must use HTTPS"):
+        LinkEncryptionSettings(
+            azure_key_vault_url="http://vault.example.test",
+            link_encryption_key_secret_name="link-key",
+        )

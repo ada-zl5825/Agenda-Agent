@@ -37,3 +37,11 @@ class EmailNormalizationError(ApplicationError):
 
 class PrivacySanitizationError(ApplicationError):
     code = "PRIVACY_SANITIZATION_FAILED"
+
+
+class LinkExtractionError(ApplicationError):
+    code = "LINK_EXTRACTION_FAILED"
+
+
+class LinkEncryptionError(ApplicationError):
+    code = "LINK_ENCRYPTION_FAILED"

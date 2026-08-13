@@ -1,12 +1,15 @@
 # Privacy Model
 
-Phase 2 implements the deterministic privacy boundary before any model integration.
+Phases 2 and 3 implement the deterministic privacy boundary before any model integration.
 
 ## Processing order
 
 ```text
 transient Graph body
   -> discover HTTP(S) URLs
+  -> classify URLs and replace them with opaque ACTION_LINK references
+  -> encrypt original URLs with a versioned AES-256-GCM key
+  -> persist ciphertext and approved metadata atomically
   -> normalize HTML/plain text
   -> parse deepest 126/nested forwarded sender context
   -> remove hidden, tracking, footer, and quoted history content
@@ -15,9 +18,11 @@ transient Graph body
   -> run the deterministic recruitment prefilter
 ```
 
-URL discovery must happen before HTML normalization because link targets can exist only in `href`
-attributes. Phase 2 retains those exact values only in `SecretStr`-backed, short-lived objects for the
-future Phase 3 encryption boundary. It does not classify, persist, or log them.
+URL discovery happens before HTML normalization because link targets can exist only in `href`
+attributes. Phase 3 consumes those `SecretStr`-backed, short-lived values immediately. The
+classifier examines host, path, query parameter names and safe context, but never query values.
+Each destination is encrypted before persistence and replaced in normalized content by a stable
+opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`.
 
 ## Removed before the future model boundary
 
@@ -35,6 +40,12 @@ future Phase 3 encryption boundary. It does not classify, persist, or log them.
 - Attachments are never downloaded; only `has_attachments` metadata is retained.
 - `FetchedMail`, normalized content, discovered URLs, and sanitized content use safe representations
   so accidental object logging does not reveal body text, private sender addresses, or URL secrets.
-- The future LLM boundary may consume only `PreparedEmail.sanitized.text`.
-- Phase 3 must consume discovered URLs, replace them with opaque references, encrypt the originals,
-  and persist only ciphertext plus approved metadata.
+- The future LLM boundary may consume only `SecurePreparedEmail.sanitized.text`.
+- Plaintext destinations exist only during discovery, encryption, trusted resolution and the
+  short-lived normalization replacement call.
+- `secure_links` persists only ciphertext, nonce, key version, link type, domain and sanitized
+  display text. It has no plaintext URL column.
+- Decryption authenticates the source-email ID and opaque ref as AES-GCM associated data, then
+  validates that the decrypted hostname matches stored metadata.
+- Key Vault access uses the Function App managed identity; key material and decrypted URLs are
+  excluded from object representations and logs.

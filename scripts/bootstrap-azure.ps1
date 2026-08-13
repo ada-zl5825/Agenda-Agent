@@ -265,6 +265,15 @@ finally {
     $tokenKeyRandom.Dispose()
 }
 $tokenCacheKey = [Convert]::ToBase64String($tokenCacheKeyBytes)
+$linkEncryptionKeyBytes = [byte[]]::new(32)
+$linkKeyRandom = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $linkKeyRandom.GetBytes($linkEncryptionKeyBytes)
+}
+finally {
+    $linkKeyRandom.Dispose()
+}
+$linkEncryptionKey = [Convert]::ToBase64String($linkEncryptionKeyBytes)
 
 Set-GitHubVariable -Name "AZURE_CLIENT_ID" -Value ([string] $deploymentIdentity.clientId)
 Set-GitHubVariable -Name "AZURE_TENANT_ID" -Value $tenantId
@@ -277,6 +286,7 @@ Set-GitHubVariable -Name "MICROSOFT_CONNECTION_ID" -Value $microsoftConnectionId
 Set-GitHubSecret -Name "POSTGRES_ADMIN_PASSWORD" -Value $postgresPassword
 Set-GitHubSecret -Name "MICROSOFT_CLIENT_SECRET" -Value ([string] $clientCredential.password)
 Set-GitHubSecret -Name "TOKEN_CACHE_ENCRYPTION_KEY" -Value $tokenCacheKey
+Set-GitHubSecret -Name "LINK_ENCRYPTION_KEY" -Value $linkEncryptionKey
 
 Write-Host "Bootstrap complete."
 Write-Host "Repository:        $GitHubRepository"

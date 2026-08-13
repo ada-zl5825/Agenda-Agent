@@ -11,7 +11,15 @@ anyio==4.14.2
     # via
     #   httpx
     #   starlette
+azure-core==1.41.0
+    # via
+    #   azure-identity
+    #   azure-keyvault-secrets
 azure-functions==1.25.0
+    # via recruitment-inbox-agent
+azure-identity==1.25.3
+    # via recruitment-inbox-agent
+azure-keyvault-secrets==4.11.0
     # via recruitment-inbox-agent
 beautifulsoup4==4.15.0
     # via recruitment-inbox-agent
@@ -26,6 +34,7 @@ charset-normalizer==3.4.9
     # via requests
 cryptography==46.0.7
     # via
+    #   azure-identity
     #   msal
     #   pyjwt
     #   recruitment-inbox-agent
@@ -44,6 +53,8 @@ idna==3.18
     #   anyio
     #   httpx
     #   requests
+isodate==0.7.2
+    # via azure-keyvault-secrets
 lxml==6.1.1
     # via recruitment-inbox-agent
 mako==1.4.1
@@ -53,7 +64,12 @@ markupsafe==3.0.3
     #   mako
     #   werkzeug
 msal==1.37.0
-    # via recruitment-inbox-agent
+    # via
+    #   azure-identity
+    #   msal-extensions
+    #   recruitment-inbox-agent
+msal-extensions==1.3.1
+    # via azure-identity
 psycopg==3.3.4
     # via recruitment-inbox-agent
 psycopg-binary==3.3.4 ; implementation_name != 'pypy'
@@ -76,7 +92,9 @@ pyjwt==2.13.0
 python-dotenv==1.2.2
     # via pydantic-settings
 requests==2.34.2
-    # via msal
+    # via
+    #   azure-core
+    #   msal
 soupsieve==2.9.2
     # via beautifulsoup4
 sqlalchemy==2.0.52
@@ -91,6 +109,9 @@ typing-extensions==4.16.0
     # via
     #   alembic
     #   anyio
+    #   azure-core
+    #   azure-identity
+    #   azure-keyvault-secrets
     #   beautifulsoup4
     #   fastapi
     #   psycopg

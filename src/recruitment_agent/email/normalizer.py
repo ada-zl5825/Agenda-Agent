@@ -1,5 +1,6 @@
 """Provider-neutral email normalizer with original forwarded-message precedence."""
 
+from collections.abc import Mapping
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -19,10 +20,17 @@ class EmailNormalizer:
         self._body_normalizer = body_normalizer or HtmlBodyNormalizer()
         self._forwarded_parser = forwarded_parser or ForwardedMailParser()
 
-    def normalize(self, *, source_email_id: UUID, mail: FetchedMail) -> NormalizedEmail:
+    def normalize(
+        self,
+        *,
+        source_email_id: UUID,
+        mail: FetchedMail,
+        link_replacements: Mapping[str, str] | None = None,
+    ) -> NormalizedEmail:
         body_text = self._body_normalizer.normalize(
             content_type=mail.body_content_type,
             content=mail.body_content,
+            link_replacements=link_replacements,
         )
         forwarded = self._forwarded_parser.parse(body_text)
         effective_body = forwarded.body_text if forwarded is not None else body_text

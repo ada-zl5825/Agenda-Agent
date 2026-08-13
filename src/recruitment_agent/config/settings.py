@@ -148,3 +148,39 @@ class MicrosoftSettings(BaseSettings):
 def get_microsoft_settings() -> MicrosoftSettings:
     """Load Phase 1 settings only at a Microsoft integration boundary."""
     return MicrosoftSettings()
+
+
+class LinkEncryptionSettings(BaseSettings):
+    """Phase 3 Azure Key Vault configuration for secure action URLs."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    azure_key_vault_url: AnyHttpUrl
+    link_encryption_key_secret_name: str
+    key_vault_request_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+    @field_validator("azure_key_vault_url")
+    @classmethod
+    def validate_vault_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        if value.scheme != "https":
+            raise ValueError("AZURE_KEY_VAULT_URL must use HTTPS")
+        return value
+
+    @field_validator("link_encryption_key_secret_name")
+    @classmethod
+    def validate_secret_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("LINK_ENCRYPTION_KEY_SECRET_NAME must not be empty")
+        return normalized
+
+
+@lru_cache(maxsize=1)
+def get_link_encryption_settings() -> LinkEncryptionSettings:
+    """Load Key Vault configuration only at the secure-link boundary."""
+    return LinkEncryptionSettings()
