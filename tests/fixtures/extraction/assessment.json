@@ -1,0 +1,29 @@
+{
+  "scenario": "assessment",
+  "received_at": "2026-08-13T09:00:00+01:00",
+  "allowed_link_refs": ["ACTION_LINK_01"],
+  "sanitized_text": "Subject: Nimbus Labs online assessment\n\nNimbus Labs invites you to complete the Graduate Engineer assessment by 18 August 2026 at 17:00 BST using ACTION_LINK_01.",
+  "response": {
+    "relevant": true,
+    "company_raw": "Nimbus Labs",
+    "role_raw": "Graduate Engineer",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "complete the Graduate Engineer assessment",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-18T17:00:00+01:00",
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": null,
+    "source_deadline_text": "18 August 2026 at 17:00 BST",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.99
+  },
+  "expected_status": "valid",
+  "expected_issues": []
+}

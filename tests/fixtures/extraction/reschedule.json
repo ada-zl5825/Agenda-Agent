@@ -1,0 +1,29 @@
+{
+  "scenario": "reschedule",
+  "received_at": "2026-08-13T09:00:00+01:00",
+  "allowed_link_refs": [],
+  "sanitized_text": "Subject: Interview rescheduled\n\nAdventure Works moved your second interview for Backend Developer to 24 August 2026 at 11:30 BST.",
+  "response": {
+    "relevant": true,
+    "company_raw": "Adventure Works",
+    "role_raw": "Backend Developer",
+    "event_type": "interview_reschedule",
+    "interview_round": "second interview",
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-24T11:30:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": "24 August 2026 at 11:30 BST",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.99
+  },
+  "expected_status": "valid",
+  "expected_issues": []
+}

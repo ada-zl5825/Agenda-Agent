@@ -46,3 +46,17 @@ def test_http_routes_have_no_default_api_prefix() -> None:
     host_config = json.loads(Path("host.json").read_text(encoding="utf-8"))
 
     assert host_config["extensions"]["http"]["routePrefix"] == ""
+
+
+def test_phase_four_uses_managed_identity_azure_openai_configuration() -> None:
+    infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+
+    assert "LLM_ENABLED: string(llmEnabled)" in infrastructure
+    assert "AZURE_OPENAI_ENDPOINT: azureOpenAIEndpoint" in infrastructure
+    assert "AZURE_OPENAI_DEPLOYMENT: azureOpenAIDeployment" in infrastructure
+    assert "AZURE_OPENAI_API_VERSION: azureOpenAIApiVersion" in infrastructure
+    assert "AZURE_CLIENT_ID: runtimeIdentity.properties.clientId" in infrastructure
+    assert "AZURE_OPENAI_API_KEY" not in infrastructure
+    assert "azureOpenAIEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}" in workflow
+    assert "azureOpenAIDeployment=${{ vars.AZURE_OPENAI_DEPLOYMENT }}" in workflow

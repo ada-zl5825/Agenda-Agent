@@ -45,3 +45,11 @@ class LinkExtractionError(ApplicationError):
 
 class LinkEncryptionError(ApplicationError):
     code = "LINK_ENCRYPTION_FAILED"
+
+
+class ExtractionInputError(ApplicationError):
+    code = "EXTRACTION_INPUT_REJECTED"
+
+
+class ExtractionInvocationError(ApplicationError):
+    code = "EXTRACTION_INVOCATION_FAILED"

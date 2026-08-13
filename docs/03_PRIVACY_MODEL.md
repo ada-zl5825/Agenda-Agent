@@ -1,6 +1,6 @@
 # Privacy Model
 
-Phases 2 and 3 implement the deterministic privacy boundary before any model integration.
+Phases 2 and 3 implement the deterministic privacy boundary. Phase 4 consumes only its safe output.
 
 ## Processing order
 
@@ -14,8 +14,10 @@ transient Graph body
   -> parse deepest 126/nested forwarded sender context
   -> remove hidden, tracking, footer, and quoted history content
   -> redact every URL and unnecessary PII
-  -> produce sanitized future-model text
+  -> produce sanitized model text
   -> run the deterministic recruitment prefilter
+  -> invoke strict structured extraction with sanitized text and opaque link refs only
+  -> deterministically validate model evidence
 ```
 
 URL discovery happens before HTML normalization because link targets can exist only in `href`
@@ -24,7 +26,7 @@ classifier examines host, path, query parameter names and safe context, but neve
 Each destination is encrypted before persistence and replaced in normalized content by a stable
 opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`.
 
-## Removed before the future model boundary
+## Removed before the model boundary
 
 - HTTP(S) URLs and `mailto:` targets;
 - personal email addresses and phone numbers;
@@ -40,7 +42,14 @@ opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`
 - Attachments are never downloaded; only `has_attachments` metadata is retained.
 - `FetchedMail`, normalized content, discovered URLs, and sanitized content use safe representations
   so accidental object logging does not reveal body text, private sender addresses, or URL secrets.
-- The future LLM boundary may consume only `SecurePreparedEmail.sanitized.text`.
+- The Phase 4 model boundary may consume only `SecurePreparedEmail.sanitized.text`, the
+  timezone-aware message `received_at`, the prompt version and allowed opaque link references.
+- A final input guard rejects plaintext HTTP(S)/www material, secret query fragments, malformed or
+  cross-email link references, and opaque references that were not secured for the source email.
+- The model returns evidence only. It never receives or chooses `company_id`, mutates PostgreSQL,
+  resolves secure destinations, changes workflow state, creates calendar events or sends email.
+- Provider failures are translated to a stable privacy-safe application error without propagating
+  model input or provider response content.
 - Plaintext destinations exist only during discovery, encryption, trusted resolution and the
   short-lived normalization replacement call.
 - `secure_links` persists only ciphertext, nonce, key version, link type, domain and sanitized

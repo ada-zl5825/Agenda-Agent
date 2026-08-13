@@ -1,4 +1,4 @@
-# Phase 0 Operations
+# Operations through Phase 4
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -7,6 +7,27 @@ Apply database changes only through Alembic:
 ```text
 uv run alembic upgrade head
 ```
+
+## Phase 4 Azure OpenAI
+
+Phase 4 uses an existing Azure OpenAI resource and a model deployment that supports structured
+outputs. Configure the GitHub `production` environment variables `AZURE_OPENAI_ENDPOINT` and
+`AZURE_OPENAI_DEPLOYMENT`; the deployment workflow passes both to Bicep. The stable API version is
+`2024-10-21`, calls time out after 30 seconds, and the three-attempt budget includes the initial
+request.
+
+The Function App authenticates with its user-assigned managed identity through
+`DefaultAzureCredential`; do not configure `AZURE_OPENAI_API_KEY`. Grant that identity the
+`Cognitive Services OpenAI User` role on the existing Azure OpenAI resource before enabling
+processing. Keep the model deployment name in configuration rather than source code.
+
+Phase 4 has no schema changes. Keep the Phase 3.5 migration `20260813_0004` at head, apply it before
+deployment, and run `seed-companies`. Structured extraction emits exact `company_raw` and
+`role_raw` evidence only; a later application step must call the deterministic company resolver.
+
+Set `LLM_ENABLED=false` for local/test processes that should not call the model. Production Bicep
+enables it after the endpoint and deployment variables are supplied. A model invocation failure is
+retry-bounded and safe to retry because this phase performs no persistence or external mutation.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:

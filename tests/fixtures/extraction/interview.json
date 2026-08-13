@@ -1,0 +1,29 @@
+{
+  "scenario": "interview",
+  "received_at": "2026-08-13T09:00:00+01:00",
+  "allowed_link_refs": ["ACTION_LINK_01"],
+  "sanitized_text": "Subject: Interview invitation\n\nNorthstar Systems invites you to a first-round interview for Software Engineer on 20 August 2026 at 14:00 BST on Teams. Join with ACTION_LINK_01.",
+  "response": {
+    "relevant": true,
+    "company_raw": "Northstar Systems",
+    "role_raw": "Software Engineer",
+    "event_type": "interview",
+    "interview_round": "first-round",
+    "action_required": true,
+    "action_text": "join the interview",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-08-20T14:00:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": "20 August 2026 at 14:00 BST",
+    "source_deadline_text": null,
+    "meeting_platform": "Teams",
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.99
+  },
+  "expected_status": "valid",
+  "expected_issues": []
+}
