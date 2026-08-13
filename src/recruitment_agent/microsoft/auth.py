@@ -73,7 +73,9 @@ class MicrosoftAuthorizationService:
     async def start_authorization(self) -> AuthorizationStart:
         connection_id = self._settings.microsoft_connection_id
         await self._store.ensure_connection(connection_id)
-        snapshot, cache = await self._load_cache(connection_id)
+        # Interactive authorization must not reuse the persisted MSAL cache. Reusing it
+        # can make MSAL select the previously authorized account during an account switch.
+        cache = SerializableTokenCache()
         client = self._client_factory.create(cache)
         state = secrets.token_urlsafe(32)
         flow = await asyncio.to_thread(
@@ -81,6 +83,7 @@ class MicrosoftAuthorizationService:
             GRAPH_DELEGATED_SCOPES,
             redirect_uri=str(self._settings.microsoft_redirect_uri),
             state=state,
+            prompt="select_account",
         )
         authorization_url = flow.get("auth_uri")
         if not isinstance(authorization_url, str) or not authorization_url:
@@ -100,7 +103,6 @@ class MicrosoftAuthorizationService:
                 expires_at=expires_at,
             )
         )
-        await self._save_cache_if_changed(snapshot=snapshot, cache=cache)
         return AuthorizationStart(
             authorization_url=authorization_url,
             expires_at=expires_at,
@@ -125,7 +127,10 @@ class MicrosoftAuthorizationService:
         )
         flow = cast(JsonObject, json.loads(serialized_flow))
 
-        snapshot, cache = await self._load_cache(stored_flow.connection_id)
+        # Complete the flow against another fresh cache. A successful exchange then
+        # replaces the old encrypted cache instead of merging accounts into it.
+        snapshot = await self._load_snapshot(stored_flow.connection_id)
+        cache = SerializableTokenCache()
         client = self._client_factory.create(cache)
         try:
             result = await asyncio.to_thread(
@@ -140,7 +145,7 @@ class MicrosoftAuthorizationService:
             raise AuthenticationFailedError(self._safe_msal_error(result))
 
         accounts = await asyncio.to_thread(client.get_accounts)
-        account = self._select_account(accounts, home_account_id=None)
+        account = self._select_interactive_account(accounts)
         home_account_id = account.get("home_account_id")
         if not isinstance(home_account_id, str) or not home_account_id:
             raise AuthenticationFailedError("MSAL account identifier is unavailable")
@@ -190,8 +195,7 @@ class MicrosoftAuthorizationService:
         self,
         connection_id: UUID,
     ) -> tuple[TokenCacheSnapshot, SerializableTokenCache]:
-        await self._store.ensure_connection(connection_id)
-        snapshot = await self._store.load_token_cache(connection_id)
+        snapshot = await self._load_snapshot(connection_id)
         cache = SerializableTokenCache()
         if snapshot.encrypted_cache is not None:
             serialized = self._cipher.decrypt(
@@ -203,6 +207,10 @@ class MicrosoftAuthorizationService:
             except (UnicodeDecodeError, ValueError) as exc:
                 raise AuthenticationFailedError("serialized token cache is invalid") from exc
         return snapshot, cache
+
+    async def _load_snapshot(self, connection_id: UUID) -> TokenCacheSnapshot:
+        await self._store.ensure_connection(connection_id)
+        return await self._store.load_token_cache(connection_id)
 
     async def _save_cache_if_changed(
         self,
@@ -250,6 +258,18 @@ class MicrosoftAuthorizationService:
         if accounts:
             return accounts[0]
         raise AuthenticationRequiredError("Microsoft account authorization is required")
+
+    @staticmethod
+    def _select_interactive_account(accounts: list[JsonObject]) -> JsonObject:
+        if len(accounts) == 1:
+            return accounts[0]
+        if not accounts:
+            raise AuthenticationFailedError(
+                "Microsoft did not return the authorized account"
+            )
+        raise AuthenticationFailedError(
+            "Microsoft returned multiple accounts for a single authorization flow"
+        )
 
     @staticmethod
     def _tenant_id_from_result(result: Mapping[str, Any]) -> str | None:
