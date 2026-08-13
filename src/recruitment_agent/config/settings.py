@@ -104,8 +104,20 @@ class MicrosoftSettings(BaseSettings):
     calendar_sync_enabled: bool = False
     calendar_interview_placeholder_minutes: int = Field(default=60, ge=1, le=1440)
     calendar_assessment_placeholder_minutes: int = Field(default=30, ge=1, le=1440)
+    daily_brief_enabled: bool = False
+    daily_brief_recipient: str | None = None
+    daily_brief_schedule: str = "0 0 * * * *"
+    daily_brief_local_hour: int = Field(default=8, ge=0, le=23)
+    public_app_base_url: AnyHttpUrl | None = None
+    web_session_signing_key: SecretStr | None = Field(default=None, repr=False)
+    web_session_ttl_seconds: int = Field(default=28_800, ge=300, le=86_400)
 
-    @field_validator("microsoft_client_id", "mail_folder_id", "token_cache_encryption_key_version")
+    @field_validator(
+        "microsoft_client_id",
+        "mail_folder_id",
+        "token_cache_encryption_key_version",
+        "daily_brief_schedule",
+    )
     @classmethod
     def require_non_empty(cls, value: str) -> str:
         normalized = value.strip()
@@ -136,6 +148,58 @@ class MicrosoftSettings(BaseSettings):
             raise ValueError(msg)
         return value
 
+    @field_validator("web_session_signing_key")
+    @classmethod
+    def validate_web_session_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        try:
+            decoded = b64decode(value.get_secret_value(), validate=True)
+        except (Base64Error, ValueError) as exc:
+            raise ValueError("WEB_SESSION_SIGNING_KEY must be valid base64") from exc
+        if len(decoded) != 32:
+            raise ValueError("WEB_SESSION_SIGNING_KEY must decode to exactly 32 bytes")
+        return value
+
+    @field_validator("daily_brief_recipient", mode="before")
+    @classmethod
+    def normalize_optional_recipient(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_phase_eight_settings(self) -> "MicrosoftSettings":
+        if self.daily_brief_enabled and (
+            self.daily_brief_recipient is None
+            or self.public_app_base_url is None
+            or self.web_session_signing_key is None
+        ):
+            raise ValueError(
+                "DAILY_BRIEF_RECIPIENT, PUBLIC_APP_BASE_URL, and "
+                "WEB_SESSION_SIGNING_KEY are required when enabled"
+            )
+        if (
+            self.web_session_signing_key is not None
+            and b64decode(
+                self.web_session_signing_key.get_secret_value(),
+                validate=True,
+            )
+            == b64decode(
+                self.token_cache_encryption_key.get_secret_value(),
+                validate=True,
+            )
+        ):
+            raise ValueError(
+                "WEB_SESSION_SIGNING_KEY must not reuse TOKEN_CACHE_ENCRYPTION_KEY"
+            )
+        if self.daily_brief_recipient is not None:
+            recipient = self.daily_brief_recipient.strip()
+            if "@" not in recipient or any(char.isspace() for char in recipient):
+                raise ValueError("DAILY_BRIEF_RECIPIENT must be an email address")
+            self.daily_brief_recipient = recipient
+        return self
+
     @property
     def authority(self) -> str:
         """Return the configured Microsoft identity authority URL."""
@@ -145,6 +209,12 @@ class MicrosoftSettings(BaseSettings):
     def token_cache_key_bytes(self) -> bytes:
         """Decode the validated AES-256 token-cache key."""
         return b64decode(self.token_cache_encryption_key.get_secret_value(), validate=True)
+
+    @property
+    def web_session_key_bytes(self) -> bytes:
+        if self.web_session_signing_key is None:
+            raise ValueError("WEB_SESSION_SIGNING_KEY is required for authenticated web routes")
+        return b64decode(self.web_session_signing_key.get_secret_value(), validate=True)
 
 
 @lru_cache(maxsize=1)

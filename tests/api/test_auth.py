@@ -5,8 +5,17 @@ import httpx
 import pytest
 
 from recruitment_agent.api.app import create_app
-from recruitment_agent.api.dependencies import get_authorization_service
+from recruitment_agent.api.dependencies import (
+    get_authorization_service,
+    get_web_session_manager,
+)
 from recruitment_agent.microsoft.auth_contracts import AuthorizationCompletion, AuthorizationStart
+from recruitment_agent.web.security import WebSessionManager
+
+
+class Clock:
+    def now(self) -> datetime:
+        return datetime(2026, 8, 13, tzinfo=UTC)
 
 
 class AuthorizationService:
@@ -35,7 +44,9 @@ class AuthorizationService:
 async def test_auth_routes_delegate_without_returning_tokens() -> None:
     application = create_app()
     service = AuthorizationService()
+    sessions = WebSessionManager(key=b"s" * 32, clock=Clock())
     application.dependency_overrides[get_authorization_service] = lambda: service
+    application.dependency_overrides[get_web_session_manager] = lambda: sessions
     transport = httpx.ASGITransport(app=application)
     async with httpx.AsyncClient(
         transport=transport,
@@ -47,10 +58,9 @@ async def test_auth_routes_delegate_without_returning_tokens() -> None:
 
     assert login.status_code == 302
     assert login.headers["location"].startswith("https://login.microsoftonline.com")
-    assert callback.status_code == 200
-    assert callback.json() == {
-        "status": "authorized",
-        "connection_id": str(service.connection_id),
-    }
+    assert callback.status_code == 303
+    assert callback.headers["location"] == "/reviews"
+    session_cookie = callback.cookies[sessions.cookie_name]
+    assert sessions.authenticate(session_cookie).connection_id == service.connection_id
     assert "token" not in callback.text.lower()
     assert service.callback == {"code": "opaque-code", "state": "opaque-state"}

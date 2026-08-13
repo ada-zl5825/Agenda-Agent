@@ -1,4 +1,4 @@
-# Test Plan through Phase 7
+# Test Plan through Phase 8
 
 The automated suite covers:
 
@@ -59,6 +59,14 @@ The automated suite covers:
   404 handling, and `Retry-After` behavior;
 - Calendar descriptions exclude action tokens, untrusted URLs and source-link query strings;
 - `calendar_links` uniqueness metadata and Phase 7 Alembic upgrade/downgrade compilation;
+- deterministic Daily Brief section ordering, HTML escaping, timezone rendering, and empty state;
+- ordinary action-link decryption only at the final Brief boundary while Review links remain opaque;
+- same-day dispatch idempotency plus accepted, failed, and uncertain send auditing without content;
+- Graph `sendMail` payload, 202 acceptance, 401 refresh, safe 429 retry, and no-retry 5xx boundary;
+- signed session expiry/tamper rejection, safe return paths, and review/version-bound CSRF;
+- graphical Review authentication, privacy-safe fields, wrong-account denial, typed choices,
+  optimistic versions, workflow resume, and read-only resolved state;
+- Phase 8 migration, `Mail.Send`, Timer, Key Vault, and disabled-by-default deployment configuration;
 - graph-state, object-representation and failure-audit privacy regressions; and
 - isolated PostgreSQL checkpoint connection configuration.
 
@@ -66,14 +74,15 @@ The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEG
 They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency,
 legacy application company-name migration, Phase 4.5 audit/candidate idempotency, a Phase 5
 PostgreSQL interrupt/close/reopen/resume flow, and Phase 6 retry/reschedule persistence with
-application/event/action/history cardinality assertions.
+application/event/action/history cardinality assertions. Phase 8 adds an empty account-scoped Brief
+snapshot plus same-day dispatch-claim and accepted-audit idempotency check.
 
 The Phase 4 contract suite is provider-independent and runs without network access or Azure
 credentials. It validates saved structured outputs against the current Pydantic schema and the
 deterministic validator. Live-model evals may be run separately, but cannot replace these contracts.
 
-Future Phase 8 review and Daily Brief tests must verify that every `NEEDS REVIEW` item has an
-authenticated `/reviews/{review_id}` graphical deep link; link preview or GET requests have no side
-effects; wrong-account access is denied; stale/double resolution is idempotent; allowed choices and
-typed overrides are server-validated; and no raw body, PII, checkpoint state or decrypted secure URL
-appears in HTML, DOM, query parameters, logs or sent email.
+Phase 8 contract tests verify that every `NEEDS REVIEW` item has an authenticated
+`/reviews/{review_id}` graphical deep link; GET requests have no side effects; stale/double
+resolution is rejected idempotently; allowed choices and typed overrides are server-validated; and
+no raw body, unnecessary PII, checkpoint state or decrypted secure URL appears in Review HTML or
+persisted Brief audit state.

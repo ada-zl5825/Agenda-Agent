@@ -65,3 +65,31 @@ class CalendarUpdateError(ApplicationError):
 
 class CalendarEventNotFoundError(CalendarUpdateError):
     """The event linked in PostgreSQL no longer exists in the provider."""
+
+
+class BriefSendError(ApplicationError):
+    code = "BRIEF_SEND_FAILED"
+
+
+class BriefSendUncertainError(BriefSendError):
+    """Delivery may have been accepted; automatic retry could duplicate mail."""
+
+
+class ReviewAuthenticationError(ApplicationError):
+    code = "AUTH_REQUIRED"
+
+
+class ReviewAccessDeniedError(ApplicationError):
+    code = "REVIEW_ACCESS_DENIED"
+
+
+class ReviewNotFoundError(ApplicationError):
+    code = "REVIEW_NOT_FOUND"
+
+
+class ReviewConflictError(ApplicationError):
+    code = "REVIEW_CONFLICT"
+
+
+class CsrfValidationError(ApplicationError):
+    code = "CSRF_INVALID"

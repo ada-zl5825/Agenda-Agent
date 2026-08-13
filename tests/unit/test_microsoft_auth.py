@@ -121,7 +121,7 @@ class ExpiredMsalClient(MsalClient):
 
 
 @pytest.mark.asyncio
-async def test_oauth_start_uses_phase_seven_graph_scopes_and_encrypted_flow() -> None:
+async def test_oauth_start_uses_phase_eight_graph_scopes_and_encrypted_flow() -> None:
     connection_id = uuid4()
     store = AuthStore(connection_id)
     client = MsalClient()
@@ -139,6 +139,7 @@ async def test_oauth_start_uses_phase_seven_graph_scopes_and_encrypted_flow() ->
     assert result.authorization_url.startswith("https://login.microsoftonline.com")
     assert client.scopes == GRAPH_DELEGATED_SCOPES
     assert "Calendars.ReadWrite" in client.scopes
+    assert "Mail.Send" in client.scopes
     assert FORBIDDEN_PHASE_1_SCOPES.isdisjoint(client.scopes)
     assert store.flow is not None
     assert b"login.microsoftonline.com" not in store.flow.encrypted_flow.ciphertext

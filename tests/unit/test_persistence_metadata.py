@@ -15,6 +15,7 @@ def test_phase_four_five_tables_use_application_schema() -> None:
         "app.company_domains",
         "app.company_resolution_attempts",
         "app.company_resolution_candidates",
+        "app.daily_briefs",
         "app.event_history",
         "app.mail_sync_states",
         "app.microsoft_authorization_flows",
@@ -59,11 +60,29 @@ def test_idempotency_constraints_are_named_and_present() -> None:
         for constraint in Base.metadata.tables["app.calendar_links"].constraints
         if isinstance(constraint, UniqueConstraint)
     }
+    brief_constraints = {
+        constraint.name
+        for constraint in Base.metadata.tables["app.daily_briefs"].constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
 
     assert "uq_recruitment_events_application_fingerprint" in event_constraints
     assert "uq_action_items_application_idempotency_key" in action_constraints
     assert "uq_calendar_links_recruitment_event" in calendar_constraints
     assert "uq_calendar_links_provider_event" in calendar_constraints
+    assert "uq_daily_briefs_account_date" in brief_constraints
+
+
+def test_daily_brief_audit_never_persists_rendered_content_or_urls() -> None:
+    brief = Base.metadata.tables["app.daily_briefs"]
+
+    assert {
+        "rendered_html",
+        "rendered_text",
+        "decrypted_url",
+        "recipient",
+        "subject",
+    }.isdisjoint(brief.c.keys())
 
 
 def test_action_items_reference_secure_links_without_cascading_deletes() -> None:

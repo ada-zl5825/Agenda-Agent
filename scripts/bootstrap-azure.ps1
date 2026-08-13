@@ -234,6 +234,7 @@ $graphResourceAppId = "00000003-0000-0000-c000-000000000000"
 $userReadScopeId = "e1fe6dd8-ba31-4d61-89e7-88639da4683d"
 $mailReadScopeId = "570282fd-fa5c-430d-a7fd-fc8dc98a9dca"
 $calendarsReadWriteScopeId = "1ec239c2-d7c9-4623-a91a-a9775856bb36"
+$mailSendScopeId = "e383f46e-2787-4529-855e-0e479a3ffac0"
 $configuredGraphScopes = az ad app permission list `
     --id $microsoftClientId `
     --query "[?resourceAppId=='$graphResourceAppId'].resourceAccess[].id" `
@@ -243,6 +244,7 @@ $requiredGraphScopeIds = @(
     $userReadScopeId,
     $mailReadScopeId,
     $calendarsReadWriteScopeId
+    $mailSendScopeId
 )
 $missingGraphPermissions = @(
     $requiredGraphScopeIds |
@@ -284,11 +286,21 @@ finally {
     $linkKeyRandom.Dispose()
 }
 $linkEncryptionKey = [Convert]::ToBase64String($linkEncryptionKeyBytes)
+$webSessionKeyBytes = [byte[]]::new(32)
+$webSessionRandom = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $webSessionRandom.GetBytes($webSessionKeyBytes)
+}
+finally {
+    $webSessionRandom.Dispose()
+}
+$webSessionSigningKey = [Convert]::ToBase64String($webSessionKeyBytes)
 
 Set-GitHubVariable -Name "AZURE_CLIENT_ID" -Value ([string] $deploymentIdentity.clientId)
 Set-GitHubVariable -Name "AZURE_TENANT_ID" -Value $tenantId
 Set-GitHubVariable -Name "AZURE_SUBSCRIPTION_ID" -Value $SubscriptionId
 Set-GitHubVariable -Name "CALENDAR_SYNC_ENABLED" -Value "false"
+Set-GitHubVariable -Name "DAILY_BRIEF_ENABLED" -Value "false"
 Set-GitHubVariable -Name "AZURE_RESOURCE_GROUP" -Value $ResourceGroupName
 Set-GitHubVariable -Name "AZURE_FUNCTIONAPP_NAME" -Value $functionAppName
 Set-GitHubVariable -Name "MICROSOFT_CLIENT_ID" -Value $microsoftClientId
@@ -298,6 +310,7 @@ Set-GitHubSecret -Name "POSTGRES_ADMIN_PASSWORD" -Value $postgresPassword
 Set-GitHubSecret -Name "MICROSOFT_CLIENT_SECRET" -Value ([string] $clientCredential.password)
 Set-GitHubSecret -Name "TOKEN_CACHE_ENCRYPTION_KEY" -Value $tokenCacheKey
 Set-GitHubSecret -Name "LINK_ENCRYPTION_KEY" -Value $linkEncryptionKey
+Set-GitHubSecret -Name "WEB_SESSION_SIGNING_KEY" -Value $webSessionSigningKey
 
 Write-Host "Bootstrap complete."
 Write-Host "Repository:        $GitHubRepository"

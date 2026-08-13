@@ -62,6 +62,47 @@ def test_microsoft_settings_keep_secrets_out_of_repr() -> None:
     assert b64encode(b"k" * 32).decode() not in repr(settings)
 
 
+def test_phase_eight_requires_independent_web_key_when_brief_is_enabled() -> None:
+    common = {
+        "microsoft_client_id": "client",
+        "microsoft_client_secret": "client-secret",
+        "microsoft_redirect_uri": "https://agent.example/auth/callback",
+        "microsoft_connection_id": uuid4(),
+        "token_cache_encryption_key": b64encode(b"t" * 32).decode(),
+        "daily_brief_enabled": True,
+        "daily_brief_recipient": "me@example.test",
+        "public_app_base_url": "https://agent.example",
+    }
+    with pytest.raises(ValidationError, match="WEB_SESSION_SIGNING_KEY"):
+        MicrosoftSettings(**common)
+    with pytest.raises(ValidationError, match="must not reuse"):
+        MicrosoftSettings(
+            **common,
+            web_session_signing_key=b64encode(b"t" * 32).decode(),
+        )
+
+    settings = MicrosoftSettings(
+        **common,
+        web_session_signing_key=b64encode(b"w" * 32).decode(),
+    )
+    assert settings.daily_brief_recipient == "me@example.test"
+    assert settings.web_session_key_bytes == b"w" * 32
+
+
+def test_disabled_daily_brief_accepts_empty_deployment_recipient() -> None:
+    settings = MicrosoftSettings(
+        microsoft_client_id="client",
+        microsoft_client_secret="client-secret",
+        microsoft_redirect_uri="https://agent.example/auth/callback",
+        microsoft_connection_id=uuid4(),
+        token_cache_encryption_key=b64encode(b"t" * 32).decode(),
+        daily_brief_enabled=False,
+        daily_brief_recipient="",
+    )
+
+    assert settings.daily_brief_recipient is None
+
+
 def test_link_encryption_settings_validate_key_vault_boundary() -> None:
     settings = LinkEncryptionSettings(
         azure_key_vault_url="https://vault.example.test",

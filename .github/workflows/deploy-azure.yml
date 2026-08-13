@@ -59,9 +59,12 @@ jobs:
             microsoftConnectionId=${{ vars.MICROSOFT_CONNECTION_ID }}
             tokenCacheEncryptionKey=${{ secrets.TOKEN_CACHE_ENCRYPTION_KEY }}
             linkEncryptionKey=${{ secrets.LINK_ENCRYPTION_KEY }}
+            webSessionSigningKey=${{ secrets.WEB_SESSION_SIGNING_KEY }}
             azureOpenAIEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}
             azureOpenAIDeployment=${{ vars.AZURE_OPENAI_DEPLOYMENT }}
             calendarSyncEnabled=${{ vars.CALENDAR_SYNC_ENABLED || 'false' }}
+            dailyBriefEnabled=${{ vars.DAILY_BRIEF_ENABLED || 'false' }}
+            dailyBriefRecipient=${{ vars.DAILY_BRIEF_RECIPIENT || '' }}
           deploymentMode: Validate
 
       - name: Deploy infrastructure
@@ -81,9 +84,12 @@ jobs:
             microsoftConnectionId=${{ vars.MICROSOFT_CONNECTION_ID }}
             tokenCacheEncryptionKey=${{ secrets.TOKEN_CACHE_ENCRYPTION_KEY }}
             linkEncryptionKey=${{ secrets.LINK_ENCRYPTION_KEY }}
+            webSessionSigningKey=${{ secrets.WEB_SESSION_SIGNING_KEY }}
             azureOpenAIEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}
             azureOpenAIDeployment=${{ vars.AZURE_OPENAI_DEPLOYMENT }}
             calendarSyncEnabled=${{ vars.CALENDAR_SYNC_ENABLED || 'false' }}
+            dailyBriefEnabled=${{ vars.DAILY_BRIEF_ENABLED || 'false' }}
+            dailyBriefRecipient=${{ vars.DAILY_BRIEF_RECIPIENT || '' }}
           deploymentMode: Incremental
 
       - name: Deploy Azure Functions application
