@@ -1,4 +1,4 @@
-# Operations through Phase 4
+# Operations through Phase 4.5
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -24,13 +24,16 @@ Azure OpenAI resource before enabling processing. Foundry v1 tokens use the
 `https://ai.azure.com/.default` scope. Keep the model deployment name in configuration rather than
 source code.
 
-Phase 4 has no schema changes. Keep the Phase 3.5 migration `20260813_0004` at head, apply it before
-deployment, and run `seed-companies`. Structured extraction emits exact `company_raw` and
-`role_raw` evidence only; a later application step must call the deterministic company resolver.
+Phase 4.5 adds migration `20260813_0005` for append-only company-resolution attempts and ambiguous
+candidate evidence. Apply it before enabling Phase 4.5 processing, then run `seed-companies`.
+Structured extraction still emits exact `company_raw` and `role_raw` evidence only; the
+`RecruitmentEntityResolutionService` owns deterministic resolution, lightweight role normalization
+and the idempotent audit write.
 
 Set `LLM_ENABLED=false` for local/test processes that should not call the model. Production Bicep
 enables it after the endpoint and deployment variables are supplied. A model invocation failure is
-retry-bounded and safe to retry because this phase performs no persistence or external mutation.
+retry-bounded. The Phase 4.5 audit write is safe to retry because its ID is derived from the complete
+deterministic source-email outcome and PostgreSQL ignores duplicate attempt and candidate keys.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:

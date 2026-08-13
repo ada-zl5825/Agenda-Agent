@@ -3,13 +3,14 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from recruitment_agent.domain.company import (
     Company,
     CompanyEntityType,
+    CompanyResolutionMatch,
     CompanySeed,
     CompanyStatus,
     normalize_company_name,
@@ -35,37 +36,77 @@ class SqlAlchemyCompanyRepository:
     async def find_by_normalized_canonical_name(
         self,
         normalized_name: str,
-    ) -> Sequence[Company]:
-        statement = select(CompanyModel).where(
+    ) -> Sequence[CompanyResolutionMatch]:
+        statement = select(
+            CompanyModel.id,
+            CompanyModel.normalized_canonical_name,
+        ).where(
             CompanyModel.normalized_canonical_name == normalized_name,
             CompanyModel.status == CompanyStatus.ACTIVE.value,
         )
-        return await self._find(statement)
+        async with self._session_factory() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(
+            CompanyResolutionMatch(
+                company_id=company_id,
+                matched_value=matched_value,
+                confidence=1.0,
+            )
+            for company_id, matched_value in sorted(rows, key=lambda row: row[0])
+        )
 
     async def find_by_normalized_alias(
         self,
         normalized_alias: str,
-    ) -> Sequence[Company]:
+    ) -> Sequence[CompanyResolutionMatch]:
         statement = (
-            select(CompanyModel)
+            select(
+                CompanyAliasModel.company_id,
+                CompanyAliasModel.normalized_alias,
+                CompanyAliasModel.confidence,
+            )
+            .select_from(CompanyModel)
             .join(CompanyAliasModel, CompanyAliasModel.company_id == CompanyModel.id)
             .where(
                 CompanyAliasModel.normalized_alias == normalized_alias,
                 CompanyModel.status == CompanyStatus.ACTIVE.value,
             )
         )
-        return await self._find(statement)
+        async with self._session_factory() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(
+            CompanyResolutionMatch(
+                company_id=company_id,
+                matched_value=matched_value,
+                confidence=confidence,
+            )
+            for company_id, matched_value, confidence in sorted(rows, key=lambda row: row[0])
+        )
 
-    async def find_by_domain(self, domain: str) -> Sequence[Company]:
+    async def find_by_domain(self, domain: str) -> Sequence[CompanyResolutionMatch]:
         statement = (
-            select(CompanyModel)
+            select(
+                CompanyDomainModel.company_id,
+                CompanyDomainModel.domain,
+                CompanyDomainModel.confidence,
+            )
+            .select_from(CompanyModel)
             .join(CompanyDomainModel, CompanyDomainModel.company_id == CompanyModel.id)
             .where(
                 CompanyDomainModel.domain == domain,
                 CompanyModel.status == CompanyStatus.ACTIVE.value,
             )
         )
-        return await self._find(statement)
+        async with self._session_factory() as session:
+            rows = (await session.execute(statement)).tuples().all()
+        return tuple(
+            CompanyResolutionMatch(
+                company_id=company_id,
+                matched_value=matched_value,
+                confidence=confidence,
+            )
+            for company_id, matched_value, confidence in sorted(rows, key=lambda row: row[0])
+        )
 
     async def upsert_seed(self, seed: CompanySeed) -> Company:
         async with self._session_factory.begin() as session:
@@ -136,11 +177,6 @@ class SqlAlchemyCompanyRepository:
                     )
                 )
             return self._to_entity(model)
-
-    async def _find(self, statement: Select[tuple[CompanyModel]]) -> tuple[Company, ...]:
-        async with self._session_factory() as session:
-            models = (await session.scalars(statement)).unique().all()
-        return tuple(self._to_entity(model) for model in sorted(models, key=lambda item: item.id))
 
     @staticmethod
     def _to_entity(model: CompanyModel) -> Company:

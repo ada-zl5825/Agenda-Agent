@@ -3,6 +3,10 @@
 from recruitment_agent.application.clock import SystemClock
 from recruitment_agent.application.company_seed import CompanyCatalogSeeder, CompanySeedResult
 from recruitment_agent.application.email_processing import EmailPreparationService, PreparedEmail
+from recruitment_agent.application.entity_resolution import (
+    RecruitmentEntityResolutionOutcome,
+    RecruitmentEntityResolutionService,
+)
 from recruitment_agent.application.mail_sync import MailSyncService
 from recruitment_agent.application.secure_email_processing import (
     SecureEmailPreparationService,
@@ -15,6 +19,8 @@ __all__ = [
     "EmailPreparationService",
     "MailSyncService",
     "PreparedEmail",
+    "RecruitmentEntityResolutionOutcome",
+    "RecruitmentEntityResolutionService",
     "SecureEmailPreparationService",
     "SecurePreparedEmail",
     "SystemClock",

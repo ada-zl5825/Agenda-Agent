@@ -4,7 +4,7 @@ from recruitment_agent.persistence import models as persistence_models  # noqa: 
 from recruitment_agent.persistence.base import Base
 
 
-def test_phase_three_five_tables_use_application_schema() -> None:
+def test_phase_four_five_tables_use_application_schema() -> None:
     expected_tables = {
         "app.action_items",
         "app.application_status_history",
@@ -12,6 +12,8 @@ def test_phase_three_five_tables_use_application_schema() -> None:
         "app.companies",
         "app.company_aliases",
         "app.company_domains",
+        "app.company_resolution_attempts",
+        "app.company_resolution_candidates",
         "app.event_history",
         "app.mail_sync_states",
         "app.microsoft_authorization_flows",
@@ -60,3 +62,17 @@ def test_action_items_reference_secure_links_without_cascading_deletes() -> None
 
     assert secure_link_foreign_key.target_fullname == "app.secure_links.id"
     assert secure_link_foreign_key.ondelete == "SET NULL"
+
+
+def test_company_resolution_audit_references_email_and_reviewed_candidates() -> None:
+    attempts = Base.metadata.tables["app.company_resolution_attempts"]
+    candidates = Base.metadata.tables["app.company_resolution_candidates"]
+
+    source_foreign_key = next(iter(attempts.c.source_email_id.foreign_keys))
+    assert source_foreign_key.target_fullname == "app.source_emails.id"
+    assert source_foreign_key.ondelete == "CASCADE"
+    assert attempts.c.raw_company_name.type.__class__.__name__ == "Text"
+    assert candidates.primary_key.columns.keys() == [
+        "resolution_attempt_id",
+        "company_id",
+    ]

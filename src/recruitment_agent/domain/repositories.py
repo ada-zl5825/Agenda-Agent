@@ -7,7 +7,12 @@ from uuid import UUID
 
 from recruitment_agent.domain.action import ActionItem
 from recruitment_agent.domain.application import Application
-from recruitment_agent.domain.company import Company, CompanySeed
+from recruitment_agent.domain.company import (
+    Company,
+    CompanyResolutionAudit,
+    CompanyResolutionMatch,
+    CompanySeed,
+)
 from recruitment_agent.domain.event import RecruitmentEvent
 
 
@@ -30,16 +35,20 @@ class CompanyRepository(Protocol):
     async def find_by_normalized_canonical_name(
         self,
         normalized_name: str,
-    ) -> Sequence[Company]: ...
+    ) -> Sequence[CompanyResolutionMatch]: ...
 
     async def find_by_normalized_alias(
         self,
         normalized_alias: str,
-    ) -> Sequence[Company]: ...
+    ) -> Sequence[CompanyResolutionMatch]: ...
 
-    async def find_by_domain(self, domain: str) -> Sequence[Company]: ...
+    async def find_by_domain(self, domain: str) -> Sequence[CompanyResolutionMatch]: ...
 
     async def upsert_seed(self, seed: CompanySeed) -> Company: ...
+
+
+class CompanyResolutionAuditRepository(Protocol):
+    async def add(self, audit: CompanyResolutionAudit) -> None: ...
 
 
 class RecruitmentEventRepository(Protocol):

@@ -1,13 +1,15 @@
 """Canonical company entities and deterministic normalization contracts."""
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from recruitment_agent.domain.errors import DomainValidationError
+from recruitment_agent.domain.role import NormalizedRole
 from recruitment_agent.domain.time import require_aware
 
 
@@ -37,9 +39,11 @@ class CompanyResolutionStatus(StrEnum):
 
 
 class CompanyResolutionMethod(StrEnum):
-    CANONICAL_NAME = "canonical_name"
-    ALIAS = "alias"
-    SENDER_DOMAIN = "sender_domain"
+    CANONICAL_EXACT = "canonical_exact"
+    ALIAS_EXACT = "alias_exact"
+    DOMAIN_EXACT = "domain_exact"
+    UNRESOLVED = "unresolved"
+    AMBIGUOUS = "ambiguous"
 
 
 def normalize_company_name(value: str) -> str:
@@ -213,20 +217,129 @@ class RawCompanyRole:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class CompanyResolutionMatch:
+    company_id: UUID
+    matched_value: str
+    confidence: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "matched_value",
+            _required_text(self.matched_value, field_name="matched_value"),
+        )
+        _validate_confidence(self.confidence)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class CompanyResolution:
+    raw_company_name: str | None
     status: CompanyResolutionStatus
-    method: CompanyResolutionMethod | None
-    company: Company | None
+    method: CompanyResolutionMethod
+    company_id: UUID | None
+    confidence: float
+    matched_value: str | None
     candidate_company_ids: tuple[UUID, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.raw_company_name is not None and not self.raw_company_name.strip():
+            raise DomainValidationError("raw_company_name must be null or non-empty")
+        _validate_confidence(self.confidence)
+        if self.matched_value is not None:
+            object.__setattr__(
+                self,
+                "matched_value",
+                _required_text(self.matched_value, field_name="matched_value"),
+            )
+        if len(self.candidate_company_ids) != len(set(self.candidate_company_ids)):
+            raise DomainValidationError("candidate company IDs must be unique")
+        object.__setattr__(self, "candidate_company_ids", tuple(sorted(self.candidate_company_ids)))
+
         if self.status is CompanyResolutionStatus.RESOLVED:
-            if self.company is None or self.method is None or self.candidate_company_ids:
+            exact_methods = {
+                CompanyResolutionMethod.CANONICAL_EXACT,
+                CompanyResolutionMethod.ALIAS_EXACT,
+                CompanyResolutionMethod.DOMAIN_EXACT,
+            }
+            if (
+                self.company_id is None
+                or self.method not in exact_methods
+                or self.matched_value is None
+                or self.candidate_company_ids
+            ):
                 raise DomainValidationError("resolved company result is inconsistent")
         elif self.status is CompanyResolutionStatus.AMBIGUOUS:
-            if self.company is not None or self.method is None:
+            if (
+                self.company_id is not None
+                or self.method is not CompanyResolutionMethod.AMBIGUOUS
+                or self.confidence != 0.0
+                or self.matched_value is not None
+            ):
                 raise DomainValidationError("ambiguous company result is inconsistent")
             if len(self.candidate_company_ids) < 2:
                 raise DomainValidationError("ambiguous result requires at least two candidates")
-        elif self.company is not None or self.method is not None or self.candidate_company_ids:
+        elif (
+            self.company_id is not None
+            or self.method is not CompanyResolutionMethod.UNRESOLVED
+            or self.confidence != 0.0
+            or self.matched_value is not None
+            or self.candidate_company_ids
+        ):
             raise DomainValidationError("unresolved company result cannot contain a match")
+
+
+CompanyResolutionResult = CompanyResolution
+
+
+_COMPANY_RESOLUTION_AUDIT_NAMESPACE = UUID("c7757331-a2c0-45db-a79a-9cdb2bd2d83a")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CompanyResolutionAudit:
+    """Idempotent audit record for one deterministic resolution outcome."""
+
+    id: UUID
+    source_email_id: UUID
+    sender_domain: str | None
+    resolution: CompanyResolution
+    role: NormalizedRole
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        source_email_id: UUID,
+        sender_domain: str | None,
+        resolution: CompanyResolution,
+        role: NormalizedRole,
+    ) -> "CompanyResolutionAudit":
+        payload = json.dumps(
+            {
+                "source_email_id": str(source_email_id),
+                "sender_domain": sender_domain,
+                "raw_company_name": resolution.raw_company_name,
+                "company_id": None
+                if resolution.company_id is None
+                else str(resolution.company_id),
+                "status": resolution.status.value,
+                "method": resolution.method.value,
+                "confidence": resolution.confidence,
+                "matched_value": resolution.matched_value,
+                "candidate_company_ids": [
+                    str(company_id) for company_id in resolution.candidate_company_ids
+                ],
+                "role_raw": role.raw_name,
+                "role_normalized": role.normalized_name,
+                "role_family": None if role.family is None else role.family.value,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return cls(
+            id=uuid5(_COMPANY_RESOLUTION_AUDIT_NAMESPACE, payload),
+            source_email_id=source_email_id,
+            sender_domain=sender_domain,
+            resolution=resolution,
+            role=role,
+        )

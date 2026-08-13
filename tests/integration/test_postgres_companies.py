@@ -1,4 +1,5 @@
 import os
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -8,15 +9,28 @@ from sqlalchemy import func, select, text
 from testcontainers.community.postgres import PostgresContainer
 
 from recruitment_agent.application.company_seed import CompanyCatalogSeeder
-from recruitment_agent.domain.company import CompanyResolutionMethod, CompanyResolutionStatus
+from recruitment_agent.domain.company import (
+    CompanyResolution,
+    CompanyResolutionAudit,
+    CompanyResolutionMethod,
+    CompanyResolutionStatus,
+)
 from recruitment_agent.domain.company_resolution import CompanyResolver
 from recruitment_agent.domain.company_seed import BYTEDANCE_ID, COMMON_COMPANY_SEEDS, TIKTOK_ID
+from recruitment_agent.domain.role import RoleNormalizer
 from recruitment_agent.persistence.companies import SqlAlchemyCompanyRepository
+from recruitment_agent.persistence.company_resolutions import (
+    SqlAlchemyCompanyResolutionAuditRepository,
+)
 from recruitment_agent.persistence.models import (
     ApplicationModel,
     CompanyAliasModel,
     CompanyDomainModel,
     CompanyModel,
+    CompanyResolutionAttemptModel,
+    CompanyResolutionCandidateModel,
+    MicrosoftConnectionModel,
+    SourceEmailModel,
 )
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
 
@@ -69,6 +83,43 @@ async def test_company_repository_seed_and_exact_resolution_against_postgres() -
         domain = await resolver.resolve(company_raw=None, sender_domain="jobs.bytedance.com")
         tiktok = await repository.get(TIKTOK_ID)
 
+        connection_id = uuid4()
+        source_email_id = uuid4()
+        async with session_factory.begin() as session:
+            session.add(MicrosoftConnectionModel(id=connection_id))
+            session.add(
+                SourceEmailModel(
+                    id=source_email_id,
+                    account_id=connection_id,
+                    graph_message_id="phase-4-5-integration",
+                    internet_message_id=None,
+                    subject="Recruitment evidence",
+                    sender_domain="example.test",
+                    received_at=datetime(2026, 8, 13, tzinfo=UTC),
+                    outlook_web_link=None,
+                    body_hash=None,
+                    has_attachments=False,
+                )
+            )
+        ambiguous = CompanyResolution(
+            raw_company_name="Conflicting reviewed evidence",
+            status=CompanyResolutionStatus.AMBIGUOUS,
+            method=CompanyResolutionMethod.AMBIGUOUS,
+            company_id=None,
+            confidence=0.0,
+            matched_value=None,
+            candidate_company_ids=(BYTEDANCE_ID, TIKTOK_ID),
+        )
+        audit = CompanyResolutionAudit.create(
+            source_email_id=source_email_id,
+            sender_domain="example.test",
+            resolution=ambiguous,
+            role=RoleNormalizer().normalize("Backend Engineer"),
+        )
+        audit_repository = SqlAlchemyCompanyResolutionAuditRepository(session_factory)
+        await audit_repository.add(audit)
+        await audit_repository.add(audit)
+
         async with session_factory() as session:
             company_count = await session.scalar(select(func.count()).select_from(CompanyModel))
             alias_count = await session.scalar(
@@ -78,6 +129,12 @@ async def test_company_repository_seed_and_exact_resolution_against_postgres() -
                 select(func.count()).select_from(CompanyDomainModel)
             )
             migrated_application = await session.get(ApplicationModel, legacy_application_id)
+            attempt_count = await session.scalar(
+                select(func.count()).select_from(CompanyResolutionAttemptModel)
+            )
+            candidate_count = await session.scalar(
+                select(func.count()).select_from(CompanyResolutionCandidateModel)
+            )
         await engine.dispose()
 
     assert first.company_ids == second.company_ids
@@ -88,10 +145,10 @@ async def test_company_repository_seed_and_exact_resolution_against_postgres() -
     assert migrated_application.raw_company_name == "  Original Company Ltd.  "
     assert migrated_application.company_id is None
     assert alias.status is CompanyResolutionStatus.RESOLVED
-    assert alias.method is CompanyResolutionMethod.ALIAS
-    assert alias.company is not None
-    assert alias.company.id == BYTEDANCE_ID
-    assert domain.company is not None
-    assert domain.company.id == BYTEDANCE_ID
+    assert alias.method is CompanyResolutionMethod.ALIAS_EXACT
+    assert alias.company_id == BYTEDANCE_ID
+    assert domain.company_id == BYTEDANCE_ID
     assert tiktok is not None
     assert tiktok.parent_company_id == BYTEDANCE_ID
+    assert attempt_count == 1
+    assert candidate_count == 2

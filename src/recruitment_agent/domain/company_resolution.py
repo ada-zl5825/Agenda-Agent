@@ -1,10 +1,11 @@
-"""Deterministic exact-match company resolution."""
+"""Deterministic exact-match company resolution with conflict detection."""
 
 from collections.abc import Sequence
+from uuid import UUID
 
 from recruitment_agent.domain.company import (
-    Company,
     CompanyResolution,
+    CompanyResolutionMatch,
     CompanyResolutionMethod,
     CompanyResolutionStatus,
     normalize_company_domain,
@@ -15,7 +16,7 @@ from recruitment_agent.domain.repositories import CompanyRepository
 
 
 class CompanyResolver:
-    """Resolve canonical name, then alias, then sender domain; never guess."""
+    """Resolve reviewed exact evidence and reject conflicting identities."""
 
     def __init__(self, repository: CompanyRepository) -> None:
         self._repository = repository
@@ -26,65 +27,90 @@ class CompanyResolver:
         company_raw: str | None,
         sender_domain: str | None,
     ) -> CompanyResolution:
+        name_matches: tuple[CompanyResolutionMatch, ...] = ()
+        name_method: CompanyResolutionMethod | None = None
         normalized_name = normalize_company_name(company_raw or "")
         if normalized_name:
             canonical = await self._repository.find_by_normalized_canonical_name(
                 normalized_name
             )
-            result = self._from_matches(
-                canonical,
-                method=CompanyResolutionMethod.CANONICAL_NAME,
-            )
-            if result.status is not CompanyResolutionStatus.UNRESOLVED:
-                return result
+            if canonical:
+                name_matches = self._unique(canonical)
+                name_method = CompanyResolutionMethod.CANONICAL_EXACT
+            else:
+                aliases = await self._repository.find_by_normalized_alias(normalized_name)
+                if aliases:
+                    name_matches = self._unique(aliases)
+                    name_method = CompanyResolutionMethod.ALIAS_EXACT
 
-            aliases = await self._repository.find_by_normalized_alias(normalized_name)
-            result = self._from_matches(aliases, method=CompanyResolutionMethod.ALIAS)
-            if result.status is not CompanyResolutionStatus.UNRESOLVED:
-                return result
-
+        domain_matches: tuple[CompanyResolutionMatch, ...] = ()
         if sender_domain is not None:
             try:
                 normalized_domain = normalize_company_domain(sender_domain)
             except DomainValidationError:
                 normalized_domain = None
             if normalized_domain is not None:
-                domains = await self._repository.find_by_domain(normalized_domain)
-                result = self._from_matches(
-                    domains,
-                    method=CompanyResolutionMethod.SENDER_DOMAIN,
+                domain_matches = self._unique(
+                    await self._repository.find_by_domain(normalized_domain)
                 )
-                if result.status is not CompanyResolutionStatus.UNRESOLVED:
-                    return result
 
+        candidate_ids = {
+            match.company_id for match in (*name_matches, *domain_matches)
+        }
+        if len(name_matches) > 1 or len(domain_matches) > 1 or len(candidate_ids) > 1:
+            return CompanyResolution(
+                raw_company_name=company_raw,
+                status=CompanyResolutionStatus.AMBIGUOUS,
+                method=CompanyResolutionMethod.AMBIGUOUS,
+                company_id=None,
+                confidence=0.0,
+                matched_value=None,
+                candidate_company_ids=tuple(sorted(candidate_ids)),
+            )
+
+        if name_matches:
+            match = name_matches[0]
+            if name_method is None:
+                raise RuntimeError("name match must have a deterministic method")
+            return self._resolved(company_raw, match=match, method=name_method)
+        if domain_matches:
+            return self._resolved(
+                company_raw,
+                match=domain_matches[0],
+                method=CompanyResolutionMethod.DOMAIN_EXACT,
+            )
         return CompanyResolution(
+            raw_company_name=company_raw,
             status=CompanyResolutionStatus.UNRESOLVED,
-            method=None,
-            company=None,
+            method=CompanyResolutionMethod.UNRESOLVED,
+            company_id=None,
+            confidence=0.0,
+            matched_value=None,
         )
 
     @staticmethod
-    def _from_matches(
-        matches: Sequence[Company],
+    def _resolved(
+        raw_company_name: str | None,
         *,
+        match: CompanyResolutionMatch,
         method: CompanyResolutionMethod,
     ) -> CompanyResolution:
-        unique = {company.id: company for company in matches}
-        if len(unique) == 1:
-            return CompanyResolution(
-                status=CompanyResolutionStatus.RESOLVED,
-                method=method,
-                company=next(iter(unique.values())),
-            )
-        if len(unique) > 1:
-            return CompanyResolution(
-                status=CompanyResolutionStatus.AMBIGUOUS,
-                method=method,
-                company=None,
-                candidate_company_ids=tuple(sorted(unique)),
-            )
         return CompanyResolution(
-            status=CompanyResolutionStatus.UNRESOLVED,
-            method=None,
-            company=None,
+            raw_company_name=raw_company_name,
+            status=CompanyResolutionStatus.RESOLVED,
+            method=method,
+            company_id=match.company_id,
+            confidence=match.confidence,
+            matched_value=match.matched_value,
         )
+
+    @staticmethod
+    def _unique(
+        matches: Sequence[CompanyResolutionMatch],
+    ) -> tuple[CompanyResolutionMatch, ...]:
+        by_company: dict[UUID, CompanyResolutionMatch] = {}
+        for match in matches:
+            current = by_company.get(match.company_id)
+            if current is None or match.confidence > current.confidence:
+                by_company[match.company_id] = match
+        return tuple(by_company[key] for key in sorted(by_company))
