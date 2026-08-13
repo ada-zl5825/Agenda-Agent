@@ -10,16 +10,19 @@ uv run alembic upgrade head
 
 ## Phase 4 Azure OpenAI
 
-Phase 4 uses an existing Azure OpenAI resource and a model deployment that supports structured
-outputs. Configure the GitHub `production` environment variables `AZURE_OPENAI_ENDPOINT` and
-`AZURE_OPENAI_DEPLOYMENT`; the deployment workflow passes both to Bicep. The stable API version is
-`2024-10-21`, calls time out after 30 seconds, and the three-attempt budget includes the initial
-request.
+Phase 4 uses an existing Microsoft Foundry or classic Azure OpenAI resource and a model deployment
+that supports strict structured outputs. Configure the GitHub `production` environment variables
+`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`; the deployment workflow passes both to
+Bicep. Foundry direct models use an endpoint ending in `/openai/v1` and the deployment name is sent
+as the OpenAI `model`. Classic endpoints continue to use API version `2024-10-21`. Calls time out
+after 30 seconds, and the three-attempt budget includes the initial request.
 
 The Function App authenticates with its user-assigned managed identity through
-`DefaultAzureCredential`; do not configure `AZURE_OPENAI_API_KEY`. Grant that identity the
-`Cognitive Services OpenAI User` role on the existing Azure OpenAI resource before enabling
-processing. Keep the model deployment name in configuration rather than source code.
+`DefaultAzureCredential`; do not configure `AZURE_OPENAI_API_KEY`. Grant that identity
+`Cognitive Services User` on a Foundry resource or `Cognitive Services OpenAI User` on a classic
+Azure OpenAI resource before enabling processing. Foundry v1 tokens use the
+`https://ai.azure.com/.default` scope. Keep the model deployment name in configuration rather than
+source code.
 
 Phase 4 has no schema changes. Keep the Phase 3.5 migration `20260813_0004` at head, apply it before
 deployment, and run `seed-companies`. Structured extraction emits exact `company_raw` and

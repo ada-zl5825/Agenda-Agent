@@ -48,13 +48,13 @@ param mailSyncEnabled bool = false
 @description('Enable Phase 4 structured recruitment extraction.')
 param llmEnabled bool = false
 
-@description('HTTPS endpoint of the existing Azure OpenAI resource.')
+@description('HTTPS model endpoint. Foundry direct models use the stable /openai/v1 route.')
 param azureOpenAIEndpoint string = ''
 
 @description('Structured-output-capable model deployment in the Azure OpenAI resource.')
 param azureOpenAIDeployment string = ''
 
-@description('Azure OpenAI stable API version used by LangChain.')
+@description('Classic Azure OpenAI API version. Ignored when the endpoint uses /openai/v1.')
 param azureOpenAIApiVersion string = '2024-10-21'
 
 @description('Maximum Flex Consumption instance count.')
