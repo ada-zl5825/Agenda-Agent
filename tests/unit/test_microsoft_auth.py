@@ -3,9 +3,13 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
+from msal import SerializableTokenCache
 
 from recruitment_agent.application.clock import SystemClock
-from recruitment_agent.application.errors import AuthenticationRequiredError
+from recruitment_agent.application.errors import (
+    AuthenticationFailedError,
+    AuthenticationRequiredError,
+)
 from recruitment_agent.config.settings import MicrosoftSettings
 from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
 from recruitment_agent.microsoft.auth_contracts import (
@@ -31,21 +35,31 @@ def settings(connection_id: UUID) -> MicrosoftSettings:
 
 
 class AuthStore:
-    def __init__(self, connection_id: UUID) -> None:
+    def __init__(
+        self,
+        connection_id: UUID,
+        *,
+        snapshot: TokenCacheSnapshot | None = None,
+    ) -> None:
         self.connection_id = connection_id
         self.flow: StoredAuthorizationFlow | None = None
-
-    async def ensure_connection(self, connection_id: UUID) -> None:
-        assert connection_id == self.connection_id
-
-    async def load_token_cache(self, connection_id: UUID) -> TokenCacheSnapshot:
-        return TokenCacheSnapshot(
+        self.snapshot = snapshot or TokenCacheSnapshot(
             connection_id=connection_id,
             revision=0,
             encrypted_cache=None,
             home_account_id=None,
             tenant_id=None,
         )
+        self.saved_home_account_id: str | None = None
+        self.saved_tenant_id: str | None = None
+        self.saved_expected_revision: int | None = None
+
+    async def ensure_connection(self, connection_id: UUID) -> None:
+        assert connection_id == self.connection_id
+
+    async def load_token_cache(self, connection_id: UUID) -> TokenCacheSnapshot:
+        assert connection_id == self.connection_id
+        return self.snapshot
 
     async def save_token_cache(
         self,
@@ -56,7 +70,11 @@ class AuthStore:
         home_account_id: str | None,
         tenant_id: str | None,
     ) -> int:
-        del connection_id, encrypted_cache, expected_revision, home_account_id, tenant_id
+        assert connection_id == self.connection_id
+        del encrypted_cache
+        self.saved_home_account_id = home_account_id
+        self.saved_tenant_id = tenant_id
+        self.saved_expected_revision = expected_revision
         return 1
 
     async def save_authorization_flow(self, flow: StoredAuthorizationFlow) -> None:
@@ -76,6 +94,8 @@ class AuthStore:
 class MsalClient:
     def __init__(self) -> None:
         self.scopes: tuple[str, ...] = ()
+        self.prompt: object = None
+        self.state: str | None = None
 
     def initiate_auth_code_flow(
         self,
@@ -84,8 +104,10 @@ class MsalClient:
         state: str | None = None,
         **kwargs: object,
     ) -> JsonObject:
-        del redirect_uri, kwargs
+        del redirect_uri
         self.scopes = scopes
+        self.prompt = kwargs.get("prompt")
+        self.state = state
         return {"auth_uri": "https://login.microsoftonline.com/authorize", "state": state}
 
     def acquire_token_by_auth_code_flow(self, *args: object, **kwargs: object) -> JsonObject:
@@ -104,9 +126,10 @@ class MsalClient:
 class Factory:
     def __init__(self, client: MsalClient) -> None:
         self.client = client
+        self.caches: list[SerializableTokenCache] = []
 
-    def create(self, cache: object) -> MsalClient:
-        del cache
+    def create(self, cache: SerializableTokenCache) -> MsalClient:
+        self.caches.append(cache)
         return self.client
 
 
@@ -118,6 +141,28 @@ class ExpiredMsalClient(MsalClient):
     def get_accounts(self, username: str | None = None) -> list[JsonObject]:
         del username
         return [{"home_account_id": "account-1"}]
+
+
+class SwitchedAccountMsalClient(MsalClient):
+    def acquire_token_by_auth_code_flow(self, *args: object, **kwargs: object) -> JsonObject:
+        del args, kwargs
+        return {
+            "access_token": "new-access-token",
+            "id_token_claims": {"tid": "new-tenant"},
+        }
+
+    def get_accounts(self, username: str | None = None) -> list[JsonObject]:
+        del username
+        return [{"home_account_id": "new-account"}]
+
+
+class AmbiguousAccountMsalClient(SwitchedAccountMsalClient):
+    def get_accounts(self, username: str | None = None) -> list[JsonObject]:
+        del username
+        return [
+            {"home_account_id": "old-account"},
+            {"home_account_id": "new-account"},
+        ]
 
 
 @pytest.mark.asyncio
@@ -138,11 +183,70 @@ async def test_oauth_start_uses_phase_eight_graph_scopes_and_encrypted_flow() ->
 
     assert result.authorization_url.startswith("https://login.microsoftonline.com")
     assert client.scopes == GRAPH_DELEGATED_SCOPES
+    assert client.prompt == "select_account"
     assert "Calendars.ReadWrite" in client.scopes
     assert "Mail.Send" in client.scopes
     assert FORBIDDEN_PHASE_1_SCOPES.isdisjoint(client.scopes)
     assert store.flow is not None
     assert b"login.microsoftonline.com" not in store.flow.encrypted_flow.ciphertext
+
+
+@pytest.mark.asyncio
+async def test_account_switch_replaces_old_cache_with_selected_account() -> None:
+    connection_id = uuid4()
+    cipher = AesGcmCipher(key=b"k" * 32, key_version="v1")
+    old_cache = cipher.encrypt(
+        b"old cache must not be deserialized during interactive authorization",
+        context=f"msal-token-cache:{connection_id}",
+    )
+    store = AuthStore(
+        connection_id,
+        snapshot=TokenCacheSnapshot(
+            connection_id=connection_id,
+            revision=7,
+            encrypted_cache=old_cache,
+            home_account_id="old-account",
+            tenant_id="old-tenant",
+        ),
+    )
+    client = SwitchedAccountMsalClient()
+    factory = Factory(client)
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=store,
+        cipher=cipher,
+        clock=SystemClock(),
+        client_factory=factory,
+    )
+
+    await service.start_authorization()
+    assert client.state is not None
+    result = await service.complete_authorization({"state": client.state, "code": "code"})
+
+    assert result.home_account_id == "new-account"
+    assert store.saved_home_account_id == "new-account"
+    assert store.saved_tenant_id == "new-tenant"
+    assert store.saved_expected_revision == 7
+    assert len(factory.caches) == 2
+    assert factory.caches[0] is not factory.caches[1]
+
+
+@pytest.mark.asyncio
+async def test_account_switch_rejects_ambiguous_msal_accounts() -> None:
+    connection_id = uuid4()
+    client = AmbiguousAccountMsalClient()
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=AuthStore(connection_id),
+        cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
+        clock=SystemClock(),
+        client_factory=Factory(client),
+    )
+
+    await service.start_authorization()
+    assert client.state is not None
+    with pytest.raises(AuthenticationFailedError, match="multiple accounts"):
+        await service.complete_authorization({"state": client.state, "code": "code"})
 
 
 def test_aes_gcm_round_trip_and_context_authentication() -> None:
