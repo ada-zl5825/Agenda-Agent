@@ -9,6 +9,11 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from recruitment_agent.application.domain_processing import RecruitmentDomainService
+from recruitment_agent.calendar.models import (
+    CalendarSyncOperation,
+    CalendarSyncRequest,
+    CalendarSyncResult,
+)
 from recruitment_agent.domain.enums import ApplicationStatus, EventStatus, RecruitmentEventType
 from recruitment_agent.domain.ports import Clock
 from recruitment_agent.domain.processing import (
@@ -44,7 +49,7 @@ from recruitment_agent.graph.contracts import (
     WorkflowSourceEmail,
     WorkflowStage,
 )
-from recruitment_agent.graph.ports import NoOpCalendarSync
+from recruitment_agent.graph.ports import CalendarSync, NoOpCalendarSync
 from recruitment_agent.graph.runner import RecruitmentWorkflowRunner, WorkflowStartRequest
 
 RUN_ID = UUID("00000000-0000-0000-0000-000000000501")
@@ -62,6 +67,23 @@ NOW = datetime(2026, 8, 13, 18, tzinfo=UTC)
 class FixedClock(Clock):
     def now(self) -> datetime:
         return NOW
+
+
+class ReviewableCalendarSync:
+    def __init__(self) -> None:
+        self.requests: list[CalendarSyncRequest] = []
+
+    async def sync(self, request: CalendarSyncRequest) -> CalendarSyncResult:
+        self.requests.append(request)
+        if request.replace_missing_event:
+            return CalendarSyncResult(
+                operation=CalendarSyncOperation.CREATED,
+                reason="missing_calendar_event_replaced",
+            )
+        return CalendarSyncResult(
+            operation=CalendarSyncOperation.REVIEW_REQUIRED,
+            reason="linked_calendar_event_missing",
+        )
 
 
 class FakeActivities:
@@ -349,6 +371,7 @@ def _runner(
     *,
     checkpointer: InMemorySaver | None = None,
     domain_store: FakeDomainStore | None = None,
+    calendar: CalendarSync | None = None,
 ) -> RecruitmentWorkflowRunner:
     memory = checkpointer or InMemorySaver()
     graph = build_recruitment_graph(checkpointer=memory)
@@ -358,7 +381,7 @@ def _runner(
             activities=activities,
             domain=RecruitmentDomainService(domain_store or FakeDomainStore()),
             persistence=persistence,
-            calendar=NoOpCalendarSync(),
+            calendar=calendar or NoOpCalendarSync(),
             clock=FixedClock(),
         ),
     )
@@ -385,12 +408,43 @@ async def test_happy_path_persists_phase_six_domain_plan() -> None:
     assert outcome.state["event_id"] is not None
     assert len(outcome.state["action_item_ids"]) == 1
     assert outcome.state["calendar_operation"] == {
-        "operation": "none",
-        "reason": "phase_7_not_implemented",
+        "operation": "disabled",
+        "reason": "calendar_sync_disabled",
     }
     assert persistence.final_status is ProcessingRunStatus.COMPLETED
     assert WorkflowStage.PERSIST_DOMAIN_CHANGES in persistence.stages
     assert activities.extract_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_unsafe_calendar_update_interrupts_then_replaces_after_review() -> None:
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(prepared=_prepared(), extraction=_result())
+    calendar = ReviewableCalendarSync()
+    runner = _runner(activities, persistence, calendar=calendar)
+
+    interrupted = await runner.start(_request())
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="apply_proposed_update"),
+    )
+
+    assert interrupted.interrupted
+    payload = interrupted.interrupt_payloads[0]
+    assert payload["review_type"] == "UNSAFE_CALENDAR_UPDATE"
+    assert payload["reason"] == "linked_calendar_event_missing"
+    assert payload["allowed_choices"] == [
+        "apply_proposed_update",
+        "skip_calendar_update",
+        "ignore",
+    ]
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert resumed.state["calendar_operation"] == {
+        "operation": "created",
+        "reason": "missing_calendar_event_replaced",
+    }
+    assert [request.replace_missing_event for request in calendar.requests] == [False, True]
 
 
 @pytest.mark.asyncio

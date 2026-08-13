@@ -28,6 +28,8 @@ class WorkflowStage(StrEnum):
     RESOLVE_EXISTING_EVENT = "resolve_existing_event"
     PLAN_STATE_TRANSITION = "plan_state_transition"
     PERSIST_DOMAIN_CHANGES = "persist_domain_changes"
+    # The stable node value is retained so Phase 5/6 PostgreSQL checkpoints resume.
+    SYNC_CALENDAR = "sync_calendar_placeholder"
     SYNC_CALENDAR_PLACEHOLDER = "sync_calendar_placeholder"
     FINALIZE_PROCESSING = "finalize_processing"
     MARK_IGNORED = "mark_ignored"
@@ -251,13 +253,6 @@ class ExtractionAudit:
             result=result,
             created_at=created_at,
         )
-
-
-class CalendarPlaceholderResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    operation: str = "none"
-    reason: str = "phase_7_not_implemented"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

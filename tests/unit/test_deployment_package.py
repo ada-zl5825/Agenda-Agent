@@ -83,3 +83,15 @@ def test_phase_four_uses_managed_identity_azure_openai_configuration() -> None:
     assert "AZURE_OPENAI_API_KEY" not in infrastructure
     assert "azureOpenAIEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}" in workflow
     assert "azureOpenAIDeployment=${{ vars.AZURE_OPENAI_DEPLOYMENT }}" in workflow
+
+
+def test_phase_seven_calendar_is_permissioned_but_disabled_by_default() -> None:
+    infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+    bootstrap = Path("scripts/bootstrap-azure.ps1").read_text(encoding="utf-8")
+
+    assert "param calendarSyncEnabled bool = false" in infrastructure
+    assert "CALENDAR_SYNC_ENABLED: string(calendarSyncEnabled)" in infrastructure
+    assert "calendarSyncEnabled=${{ vars.CALENDAR_SYNC_ENABLED || 'false' }}" in workflow
+    assert "1ec239c2-d7c9-4623-a91a-a9775856bb36" in bootstrap
+    assert 'Set-GitHubVariable -Name "CALENDAR_SYNC_ENABLED" -Value "false"' in bootstrap

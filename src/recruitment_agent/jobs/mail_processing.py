@@ -7,6 +7,7 @@ from uuid import UUID
 
 import httpx
 
+from recruitment_agent.application.calendar_sync import CalendarPlanner, CalendarSyncService
 from recruitment_agent.application.clock import SystemClock
 from recruitment_agent.application.domain_processing import RecruitmentDomainService
 from recruitment_agent.application.entity_resolution import (
@@ -33,7 +34,6 @@ from recruitment_agent.graph.activities import SecureRecruitmentWorkflowActiviti
 from recruitment_agent.graph.builder import build_recruitment_graph
 from recruitment_agent.graph.context import RecruitmentGraphContext
 from recruitment_agent.graph.contracts import ReviewDecision
-from recruitment_agent.graph.ports import NoOpCalendarSync
 from recruitment_agent.graph.postgres import open_postgres_checkpointer
 from recruitment_agent.graph.runner import (
     RecruitmentWorkflowRunner,
@@ -43,8 +43,10 @@ from recruitment_agent.graph.runner import (
 from recruitment_agent.links.azure import azure_link_key_provider
 from recruitment_agent.links.encryption import ActionLinkEncryptor
 from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
+from recruitment_agent.microsoft.calendar import GraphCalendarClient
 from recruitment_agent.microsoft.crypto import AesGcmCipher
 from recruitment_agent.microsoft.graph import GraphMailClient
+from recruitment_agent.persistence.calendar import SqlAlchemyCalendarSyncStore
 from recruitment_agent.persistence.companies import SqlAlchemyCompanyRepository
 from recruitment_agent.persistence.company_resolutions import (
     SqlAlchemyCompanyResolutionAuditRepository,
@@ -131,6 +133,15 @@ async def _production_workflow_runner() -> AsyncIterator[RecruitmentWorkflowRunn
                         microsoft_settings.graph_max_retry_delay_seconds
                     ),
                 )
+                calendar_gateway = GraphCalendarClient(
+                    http_client=http_client,
+                    token_provider=auth_service,
+                    base_url=str(microsoft_settings.graph_base_url),
+                    max_attempts=microsoft_settings.graph_max_retry_attempts,
+                    max_retry_delay_seconds=(
+                        microsoft_settings.graph_max_retry_delay_seconds
+                    ),
+                )
                 link_service = SecureActionLinkService(
                     repository=SqlAlchemySecureLinkRepository(session_factory),
                     encryptor=ActionLinkEncryptor(key_provider),
@@ -159,7 +170,20 @@ async def _production_workflow_runner() -> AsyncIterator[RecruitmentWorkflowRunn
                         SqlAlchemyRecruitmentDomainStore(session_factory)
                     ),
                     persistence=persistence,
-                    calendar=NoOpCalendarSync(),
+                    calendar=CalendarSyncService(
+                        store=SqlAlchemyCalendarSyncStore(session_factory),
+                        gateway=calendar_gateway,
+                        planner=CalendarPlanner(
+                            interview_placeholder_minutes=(
+                                microsoft_settings.calendar_interview_placeholder_minutes
+                            ),
+                            assessment_placeholder_minutes=(
+                                microsoft_settings.calendar_assessment_placeholder_minutes
+                            ),
+                        ),
+                        clock=clock,
+                        enabled=microsoft_settings.calendar_sync_enabled,
+                    ),
                     clock=clock,
                 )
                 yield RecruitmentWorkflowRunner(

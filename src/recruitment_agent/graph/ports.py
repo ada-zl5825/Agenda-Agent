@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from recruitment_agent.calendar.models import CalendarSyncRequest, CalendarSyncResult
 from recruitment_agent.domain.ports import Clock
 from recruitment_agent.domain.processing import (
     ApplicationResolution,
@@ -13,7 +14,6 @@ from recruitment_agent.domain.processing import (
     RecruitmentEvidence,
 )
 from recruitment_agent.graph.contracts import (
-    CalendarPlaceholderResult,
     ExtractionAudit,
     ProcessingRun,
     ProcessingRunStatus,
@@ -110,16 +110,24 @@ class WorkflowPersistence(Protocol):
     ) -> None: ...
 
 
-class CalendarSyncPlaceholder(Protocol):
-    async def sync(self, *, processing_run_id: UUID) -> CalendarPlaceholderResult: ...
+class CalendarSync(Protocol):
+    async def sync(self, request: CalendarSyncRequest) -> CalendarSyncResult: ...
 
 
-class NoOpCalendarSync:
-    """Typed Phase 7 boundary that deliberately performs no calendar action."""
+class DisabledCalendarSync:
+    """Explicit feature-flag boundary used until Calendar consent is complete."""
 
-    async def sync(self, *, processing_run_id: UUID) -> CalendarPlaceholderResult:
-        del processing_run_id
-        return CalendarPlaceholderResult()
+    async def sync(self, request: CalendarSyncRequest) -> CalendarSyncResult:
+        del request
+        from recruitment_agent.calendar.models import CalendarSyncOperation
+
+        return CalendarSyncResult(
+            operation=CalendarSyncOperation.DISABLED,
+            reason="calendar_sync_disabled",
+        )
+
+
+NoOpCalendarSync = DisabledCalendarSync
 
 
 class WorkflowClock(Clock, Protocol):

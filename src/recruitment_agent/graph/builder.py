@@ -19,6 +19,7 @@ from recruitment_agent.graph.nodes import (
     resolve_application,
     resolve_existing_event,
     route_after_application_resolution,
+    route_after_calendar,
     route_after_event_resolution,
     route_after_prefilter,
     route_after_validation,
@@ -105,7 +106,14 @@ def build_recruitment_graph(
     )
     builder.add_edge("plan_state_transition", "persist_domain_changes")
     builder.add_edge("persist_domain_changes", "sync_calendar_placeholder")
-    builder.add_edge("sync_calendar_placeholder", "finalize_processing")
+    builder.add_conditional_edges(
+        "sync_calendar_placeholder",
+        route_after_calendar,
+        {
+            "request_review": "request_review",
+            "finalize_processing": "finalize_processing",
+        },
+    )
     builder.add_edge("finalize_processing", END)
     builder.add_edge("mark_ignored", END)
     return builder.compile(checkpointer=checkpointer)

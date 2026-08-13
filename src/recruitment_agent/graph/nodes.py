@@ -8,6 +8,7 @@ from uuid import UUID
 from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 
+from recruitment_agent.calendar.models import CalendarSyncRequest
 from recruitment_agent.domain.processing import (
     ApplicationResolution,
     ApplicationResolutionKind,
@@ -363,6 +364,7 @@ async def request_review(
         "validate_extraction",
         "resolve_application",
         "resolve_existing_event",
+        "sync_calendar_placeholder",
         "mark_ignored",
     ]
 ]:
@@ -435,9 +437,17 @@ async def request_review(
             update["treat_reschedule_as_new"] = True
         else:
             update["selected_event_id"] = decision.choice
+    elif request.review_type is ReviewType.UNSAFE_CALENDAR_UPDATE:
+        if decision.choice == "apply_proposed_update":
+            update["replace_missing_calendar_event"] = True
+        elif decision.choice == "skip_calendar_update":
+            update["skip_calendar_update"] = True
 
     destination: Literal[
-        "validate_extraction", "resolve_application", "resolve_existing_event"
+        "validate_extraction",
+        "resolve_application",
+        "resolve_existing_event",
+        "sync_calendar_placeholder",
     ]
     if resume_stage is WorkflowStage.VALIDATE_EXTRACTION:
         destination = "validate_extraction"
@@ -445,6 +455,8 @@ async def request_review(
         destination = "resolve_application"
     elif resume_stage is WorkflowStage.RESOLVE_EXISTING_EVENT:
         destination = "resolve_existing_event"
+    elif resume_stage is WorkflowStage.SYNC_CALENDAR:
+        destination = "sync_calendar_placeholder"
     else:
         raise ValueError("review resume stage is not supported")
     return Command(goto=destination, update=update)
@@ -603,13 +615,54 @@ async def sync_calendar_placeholder(
     state: RecruitmentGraphState,
     runtime: Runtime[RecruitmentGraphContext],
 ) -> dict[str, object]:
-    stage = WorkflowStage.SYNC_CALENDAR_PLACEHOLDER
+    stage = WorkflowStage.SYNC_CALENDAR
     await _advance(state, runtime, stage)
-    result = await runtime.context.calendar.sync(processing_run_id=_run_id(state))
-    return {
+    result = await runtime.context.calendar.sync(
+        CalendarSyncRequest(
+            account_id=UUID(state["account_id"]),
+            source_email_id=_source_email_id(state),
+            recruitment_event_id=(
+                None if state.get("event_id") is None else UUID(state["event_id"])
+            ),
+            replace_missing_event=state.get("replace_missing_calendar_event", False),
+            skip_update=state.get("skip_calendar_update", False),
+        )
+    )
+    update: dict[str, object] = {
         "current_stage": stage.value,
         "calendar_operation": result.model_dump(mode="json"),
     }
+    if result.needs_review:
+        update.update(
+            {
+                "status": ProcessingRunStatus.NEEDS_REVIEW.value,
+                "review_request": ReviewRequest(
+                    review_type=ReviewType.UNSAFE_CALENDAR_UPDATE,
+                    reason=result.reason,
+                    question=(
+                        "The proposed Calendar change is not safe to apply automatically. "
+                        "Choose how this event should be handled."
+                    ),
+                    allowed_choices=(
+                        "apply_proposed_update",
+                        "skip_calendar_update",
+                        "ignore",
+                    ),
+                ).model_dump(mode="json"),
+                "review_resume_stage": stage.value,
+            }
+        )
+    else:
+        update["status"] = ProcessingRunStatus.RUNNING.value
+    return update
+
+
+def route_after_calendar(
+    state: RecruitmentGraphState,
+) -> Literal["request_review", "finalize_processing"]:
+    if ProcessingRunStatus(state["status"]) is ProcessingRunStatus.NEEDS_REVIEW:
+        return "request_review"
+    return "finalize_processing"
 
 
 async def finalize_processing(

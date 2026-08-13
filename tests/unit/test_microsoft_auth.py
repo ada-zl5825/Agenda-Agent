@@ -14,7 +14,10 @@ from recruitment_agent.microsoft.auth_contracts import (
     TokenCacheSnapshot,
 )
 from recruitment_agent.microsoft.crypto import AesGcmCipher, EncryptedPayload
-from recruitment_agent.microsoft.scopes import FORBIDDEN_PHASE_1_SCOPES, MAIL_READ_SCOPES
+from recruitment_agent.microsoft.scopes import (
+    FORBIDDEN_PHASE_1_SCOPES,
+    GRAPH_DELEGATED_SCOPES,
+)
 
 
 def settings(connection_id: UUID) -> MicrosoftSettings:
@@ -118,7 +121,7 @@ class ExpiredMsalClient(MsalClient):
 
 
 @pytest.mark.asyncio
-async def test_oauth_start_uses_mail_read_and_persists_only_encrypted_flow() -> None:
+async def test_oauth_start_uses_phase_seven_graph_scopes_and_encrypted_flow() -> None:
     connection_id = uuid4()
     store = AuthStore(connection_id)
     client = MsalClient()
@@ -134,7 +137,8 @@ async def test_oauth_start_uses_mail_read_and_persists_only_encrypted_flow() -> 
     result = await service.start_authorization()
 
     assert result.authorization_url.startswith("https://login.microsoftonline.com")
-    assert client.scopes == MAIL_READ_SCOPES
+    assert client.scopes == GRAPH_DELEGATED_SCOPES
+    assert "Calendars.ReadWrite" in client.scopes
     assert FORBIDDEN_PHASE_1_SCOPES.isdisjoint(client.scopes)
     assert store.flow is not None
     assert b"login.microsoftonline.com" not in store.flow.encrypted_flow.ciphertext

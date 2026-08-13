@@ -516,6 +516,46 @@ class RecruitmentEventModel(TimestampMixin, Base):
     semantic_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
+class CalendarLinkModel(TimestampMixin, Base):
+    """One durable Microsoft Calendar identity per recruitment event."""
+
+    __tablename__ = "calendar_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "recruitment_event_id",
+            name="uq_calendar_links_recruitment_event",
+        ),
+        UniqueConstraint(
+            "provider",
+            "calendar_event_id",
+            name="uq_calendar_links_provider_event",
+        ),
+        CheckConstraint("length(provider) > 0", name="provider_not_empty"),
+        CheckConstraint("length(calendar_event_id) > 0", name="calendar_event_id_not_empty"),
+        CheckConstraint(
+            "length(content_fingerprint) = 64",
+            name="content_fingerprint_sha256",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    recruitment_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.recruitment_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    calendar_event_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class EventHistoryModel(Base):
     __tablename__ = "event_history"
 

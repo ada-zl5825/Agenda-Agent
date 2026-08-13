@@ -17,6 +17,9 @@
     "mailSyncEnabled": {
       "value": false
     },
+    "calendarSyncEnabled": {
+      "value": false
+    },
     "llmEnabled": {
       "value": true
     }

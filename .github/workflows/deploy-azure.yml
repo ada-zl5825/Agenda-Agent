@@ -61,6 +61,7 @@ jobs:
             linkEncryptionKey=${{ secrets.LINK_ENCRYPTION_KEY }}
             azureOpenAIEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}
             azureOpenAIDeployment=${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+            calendarSyncEnabled=${{ vars.CALENDAR_SYNC_ENABLED || 'false' }}
           deploymentMode: Validate
 
       - name: Deploy infrastructure
@@ -82,6 +83,7 @@ jobs:
             linkEncryptionKey=${{ secrets.LINK_ENCRYPTION_KEY }}
             azureOpenAIEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}
             azureOpenAIDeployment=${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+            calendarSyncEnabled=${{ vars.CALENDAR_SYNC_ENABLED || 'false' }}
           deploymentMode: Incremental
 
       - name: Deploy Azure Functions application

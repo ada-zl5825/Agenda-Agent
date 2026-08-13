@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from recruitment_agent.domain.ports import Clock
 from recruitment_agent.graph.ports import (
-    CalendarSyncPlaceholder,
+    CalendarSync,
     RecruitmentDomainActivities,
     RecruitmentWorkflowActivities,
     WorkflowPersistence,
@@ -16,5 +16,5 @@ class RecruitmentGraphContext:
     activities: RecruitmentWorkflowActivities
     domain: RecruitmentDomainActivities
     persistence: WorkflowPersistence
-    calendar: CalendarSyncPlaceholder
+    calendar: CalendarSync
     clock: Clock
