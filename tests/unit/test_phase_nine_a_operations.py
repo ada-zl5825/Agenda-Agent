@@ -1,5 +1,7 @@
 """Phase 9A control-plane, queue, and safety regressions."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -345,6 +347,40 @@ async def test_manual_daily_brief_is_audited_and_respects_the_runtime_switch() -
 
     assert handlers.sends == 1
     assert store.completed == [(operation.id, {"sent": True, "already_sent": False})]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_job_executes_due_operations_as_a_queue_scale_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flex Consumption never scaled the queue worker, so the timer must execute."""
+    import recruitment_agent.jobs.operations as jobs
+
+    first, second = uuid4(), uuid4()
+    executed: list[UUID] = []
+
+    class FakeService:
+        async def redispatch_queued(self) -> tuple[UUID, ...]:
+            return (first, second)
+
+    @asynccontextmanager
+    async def fake_service() -> AsyncIterator[FakeService]:
+        yield FakeService()
+
+    async def fake_run_operation_job(
+        operation_id: UUID, *, delivery_attempt: int = 1
+    ) -> None:
+        executed.append(operation_id)
+        if operation_id == first:
+            raise RuntimeError("one failing operation must not block the rest")
+
+    monkeypatch.setattr(jobs, "operations_control_service", fake_service)
+    monkeypatch.setattr(jobs, "run_operation_job", fake_run_operation_job)
+
+    dispatched = await jobs.run_operation_dispatch_job()
+
+    assert dispatched == 2
+    assert executed == [first, second]
 
 
 def test_operations_token_is_constant_contract_and_routes_are_exposed() -> None:

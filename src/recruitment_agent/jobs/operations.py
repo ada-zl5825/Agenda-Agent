@@ -144,10 +144,16 @@ async def run_operation_job(operation_id: UUID, *, delivery_attempt: int = 1) ->
 
 
 async def run_operation_dispatch_job() -> int:
-    """Recover queued database operations whose first queue send may have failed."""
+    """Re-enqueue due operations and execute them directly as a scale fallback.
+
+    The queue trigger is kept as the low-latency path, but Flex Consumption has
+    never scaled the queue worker from zero in this deployment, so the
+    every-minute dispatch timer also executes due operations itself. The
+    ``claim_operation`` lease makes the two execution paths safely idempotent.
+    """
     try:
         async with operations_control_service() as service:
-            return await service.redispatch_queued()
+            operation_ids = await service.redispatch_queued()
     except Exception as exc:
         LOGGER.error(
             "operations_dispatch_unavailable:%s",
@@ -155,6 +161,16 @@ async def run_operation_dispatch_job() -> int:
             extra={"error_type": type(exc).__name__},
         )
         return 0
+    for operation_id in operation_ids:
+        try:
+            await run_operation_job(operation_id)
+        except Exception as exc:
+            LOGGER.error(
+                "operations_dispatch_execute_failed:%s",
+                type(exc).__name__,
+                extra={"error_type": type(exc).__name__},
+            )
+    return len(operation_ids)
 
 
 async def _read_scheduled_runtime_control() -> RuntimeControl:
