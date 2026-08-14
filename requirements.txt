@@ -49,7 +49,7 @@ charset-normalizer==3.4.9
     # via requests
 colorama==0.4.6 ; sys_platform == 'win32'
     # via tqdm
-cryptography==46.0.7
+cryptography==50.0.0
     # via
     #   azure-identity
     #   azure-storage-queue
