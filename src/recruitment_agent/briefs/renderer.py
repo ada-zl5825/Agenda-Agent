@@ -105,4 +105,9 @@ class DailyBriefRenderer:
         parsed = urlsplit(url)
         if parsed.scheme not in {"http", "https"} or parsed.hostname is None:
             return escape(label)
-        return f'<a href="{escape(url, quote=True)}">{escape(label)}</a>'
+        # Secret-bearing action URLs must not leak through the Referer header
+        # when the recipient clicks through to a third-party site.
+        return (
+            f'<a href="{escape(url, quote=True)}" rel="noreferrer noopener" '
+            f'referrerpolicy="no-referrer">{escape(label)}</a>'
+        )

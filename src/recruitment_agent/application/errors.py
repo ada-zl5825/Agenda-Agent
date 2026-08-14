@@ -27,6 +27,18 @@ class DeltaStateInvalidError(GraphFetchError):
     code = "DELTA_STATE_INVALID"
 
 
+class MailSyncInProgressError(ApplicationError):
+    """Another synchronization currently holds the folder's sync lease."""
+
+    code = "SYNC_IN_PROGRESS"
+
+
+class MailSyncPageLimitError(ApplicationError):
+    """One invocation hit its page budget; committed progress resumes next run."""
+
+    code = "SYNC_PAGE_LIMIT"
+
+
 class TokenCacheConflictError(ApplicationError):
     code = "TOKEN_CACHE_CONFLICT"
 
@@ -53,6 +65,18 @@ class ExtractionInputError(ApplicationError):
 
 class ExtractionInvocationError(ApplicationError):
     code = "EXTRACTION_INVOCATION_FAILED"
+
+
+class TimeEvidenceUnresolvedError(ApplicationError):
+    """Time evidence exists but stayed unusable after review; fail visibly."""
+
+    code = "EVENT_TIME_UNRESOLVED"
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"time evidence is unresolved: {reason}")
+        normalized = reason.strip().upper()
+        if normalized:
+            self.code = normalized[:64]
 
 
 class CalendarCreateError(ApplicationError):

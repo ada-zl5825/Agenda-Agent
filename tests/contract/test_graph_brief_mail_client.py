@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from recruitment_agent.application.errors import BriefSendUncertainError
+from recruitment_agent.application.errors import BriefSendError, BriefSendUncertainError
 from recruitment_agent.briefs.renderer import RenderedBrief
 from recruitment_agent.microsoft.send_mail import GraphBriefMailClient
 
@@ -74,6 +74,54 @@ async def test_graph_server_error_is_uncertain_and_is_not_retried() -> None:
             )
 
     assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_connect_failure_is_a_definite_retryable_failure_not_uncertain() -> None:
+    """Regression: DNS/connect errors never delivered the request, so the day
+    must not be blocked by a non-retryable UNCERTAIN outcome."""
+    attempts = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        raise httpx.ConnectError("dns failure")
+
+    delays: list[float] = []
+
+    async def sleep(delay: float) -> None:
+        delays.append(delay)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(BriefSendError) as excinfo:
+            await GraphBriefMailClient(
+                http_client=http,
+                token_provider=Tokens(),
+                max_attempts=3,
+                sleep=sleep,
+            ).send_brief(
+                account_id=uuid4(),
+                recipient="me@example.test",
+                brief=RenderedBrief(subject="Brief", html="<p>safe</p>", text="safe"),
+            )
+
+    assert not isinstance(excinfo.value, BriefSendUncertainError)
+    assert attempts == 3
+    assert delays == [1.0, 2.0]
+
+
+@pytest.mark.asyncio
+async def test_mid_request_transport_failure_stays_uncertain() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("response never arrived")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(BriefSendUncertainError):
+            await GraphBriefMailClient(http_client=http, token_provider=Tokens()).send_brief(
+                account_id=uuid4(),
+                recipient="me@example.test",
+                brief=RenderedBrief(subject="Brief", html="<p>safe</p>", text="safe"),
+            )
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from recruitment_agent.application.daily_brief import BriefDispatchStatus, DailyBriefStore
+from recruitment_agent.application.daily_brief import (
+    DISPATCH_ABANDONED_ERROR_CODE,
+    BriefDispatchStatus,
+    DailyBriefStore,
+    resolve_dispatch_claim,
+)
 from recruitment_agent.briefs.models import BriefItem, BriefSection, DailyBriefSnapshot
 from recruitment_agent.domain.enums import ActionStatus, ApplicationStatus, EventStatus
 from recruitment_agent.persistence.models import (
@@ -28,6 +33,13 @@ _BRIEF_NAMESPACE = UUID("75ead7e4-d951-43c1-b327-cef60ed3ba89")
 _OUTLOOK_HOSTS = frozenset(
     {"outlook.office.com", "outlook.office365.com", "outlook.live.com"}
 )
+
+
+def _require_utc(value: datetime) -> datetime:
+    """Normalize database timestamps defensively; timestamptz should be aware."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class SqlAlchemyDailyBriefStore(DailyBriefStore):
@@ -269,8 +281,9 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
         timezone: str,
     ) -> bool:
         identity = uuid5(_BRIEF_NAMESPACE, f"{account_id}:{brief_date.isoformat()}")
+        now = datetime.now(UTC)
         async with self._session_factory.begin() as session:
-            await session.execute(
+            inserted_id = await session.scalar(
                 insert(DailyBriefModel)
                 .values(
                     id=identity,
@@ -278,10 +291,14 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
                     brief_date=brief_date,
                     timezone=timezone,
                     status=BriefDispatchStatus.DISPATCHING.value,
-                    dispatch_started_at=datetime.now(UTC),
+                    attempt_count=1,
+                    dispatch_started_at=now,
                 )
                 .on_conflict_do_nothing(index_elements=["account_id", "brief_date"])
+                .returning(DailyBriefModel.id)
             )
+            if inserted_id is not None:
+                return True
             model = await session.scalar(
                 select(DailyBriefModel)
                 .where(
@@ -292,9 +309,23 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
             )
             if model is None:
                 raise RuntimeError("Daily Brief dispatch could not be claimed")
-            if model.status != BriefDispatchStatus.DISPATCHING.value:
+            decision = resolve_dispatch_claim(
+                status=BriefDispatchStatus(model.status),
+                attempt_count=model.attempt_count,
+                dispatch_started_at=_require_utc(model.dispatch_started_at),
+                now=now,
+            )
+            if decision.mark_abandoned:
+                model.status = BriefDispatchStatus.UNCERTAIN.value
+                model.error_code = DISPATCH_ABANDONED_ERROR_CODE
                 return False
-            return model.attempt_count == 1
+            if not decision.claim:
+                return False
+            model.status = BriefDispatchStatus.DISPATCHING.value
+            model.attempt_count = model.attempt_count + 1
+            model.dispatch_started_at = now
+            model.error_code = None
+            return True
 
     async def mark_accepted(self, *, account_id: UUID, brief_date: date) -> None:
         await self._set_status(

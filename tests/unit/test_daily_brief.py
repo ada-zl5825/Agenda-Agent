@@ -1,20 +1,22 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import SecretStr
 
 from recruitment_agent.application.daily_brief import (
+    MAX_DISPATCH_ATTEMPTS,
     BriefDispatchStatus,
     DailyBriefService,
+    resolve_dispatch_claim,
 )
 from recruitment_agent.application.errors import BriefSendUncertainError
 from recruitment_agent.briefs.models import BriefItem, BriefSection, DailyBriefSnapshot
 from recruitment_agent.briefs.renderer import DailyBriefRenderer, RenderedBrief
 from recruitment_agent.jobs import daily_brief as daily_brief_job
-from recruitment_agent.jobs.daily_brief import is_daily_brief_delivery_hour
+from recruitment_agent.jobs.daily_brief import is_daily_brief_due
 from recruitment_agent.links.encryption import ActionLinkEncryptor
 from recruitment_agent.links.key_provider import StaticLinkKeyProvider
 from recruitment_agent.links.models import ActionLinkType, SecureLink
@@ -25,22 +27,95 @@ class Clock:
         return datetime(2026, 8, 13, 7, 30, tzinfo=UTC)
 
 
-def test_delivery_hour_uses_london_dst_instead_of_utc_cron_time() -> None:
-    assert is_daily_brief_delivery_hour(
+def test_delivery_due_uses_london_dst_instead_of_utc_cron_time() -> None:
+    assert is_daily_brief_due(
         now=datetime(2026, 1, 13, 8, tzinfo=UTC),
         timezone="Europe/London",
         local_hour=8,
     )
-    assert is_daily_brief_delivery_hour(
+    assert is_daily_brief_due(
         now=datetime(2026, 8, 13, 7, tzinfo=UTC),
         timezone="Europe/London",
         local_hour=8,
     )
-    assert not is_daily_brief_delivery_hour(
-        now=datetime(2026, 8, 13, 8, tzinfo=UTC),
+    assert not is_daily_brief_due(
+        now=datetime(2026, 8, 13, 6, tzinfo=UTC),
         timezone="Europe/London",
         local_hour=8,
     )
+
+
+def test_late_timer_tick_is_still_due_the_same_local_day() -> None:
+    """A cold-started host must not silently skip the whole day's brief."""
+    assert is_daily_brief_due(
+        now=datetime(2026, 8, 13, 8, 5, tzinfo=UTC),  # 09:05 London
+        timezone="Europe/London",
+        local_hour=8,
+    )
+    assert is_daily_brief_due(
+        now=datetime(2026, 8, 13, 22, tzinfo=UTC),
+        timezone="Europe/London",
+        local_hour=8,
+    )
+
+
+def test_dispatch_claim_is_exclusive_while_a_send_is_in_flight() -> None:
+    """Regression: a concurrent manual send must not double-send the brief."""
+    started = datetime(2026, 8, 13, 8, 0, tzinfo=UTC)
+    decision = resolve_dispatch_claim(
+        status=BriefDispatchStatus.DISPATCHING,
+        attempt_count=1,
+        dispatch_started_at=started,
+        now=started + timedelta(minutes=2),
+    )
+    assert not decision.claim
+    assert not decision.mark_abandoned
+
+
+def test_stale_dispatch_is_closed_as_uncertain_not_retried() -> None:
+    started = datetime(2026, 8, 13, 8, 0, tzinfo=UTC)
+    decision = resolve_dispatch_claim(
+        status=BriefDispatchStatus.DISPATCHING,
+        attempt_count=1,
+        dispatch_started_at=started,
+        now=started + timedelta(minutes=11),
+    )
+    assert not decision.claim
+    assert decision.mark_abandoned
+
+
+def test_failed_dispatch_allows_bounded_same_day_retries() -> None:
+    started = datetime(2026, 8, 13, 8, 0, tzinfo=UTC)
+    now = started + timedelta(hours=1)
+    retry = resolve_dispatch_claim(
+        status=BriefDispatchStatus.FAILED,
+        attempt_count=1,
+        dispatch_started_at=started,
+        now=now,
+    )
+    assert retry.claim
+    capped = resolve_dispatch_claim(
+        status=BriefDispatchStatus.FAILED,
+        attempt_count=MAX_DISPATCH_ATTEMPTS,
+        dispatch_started_at=started,
+        now=now,
+    )
+    assert not capped.claim
+    assert not capped.mark_abandoned
+
+
+def test_terminal_dispatch_statuses_are_never_reclaimed() -> None:
+    started = datetime(2026, 8, 13, 8, 0, tzinfo=UTC)
+    now = started + timedelta(hours=2)
+    for status in (BriefDispatchStatus.ACCEPTED, BriefDispatchStatus.UNCERTAIN):
+        decision = resolve_dispatch_claim(
+            status=status,
+            attempt_count=1,
+            dispatch_started_at=started,
+            now=now,
+        )
+        assert not decision.claim
+        assert not decision.mark_abandoned
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,11 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from recruitment_agent.application.errors import ApplicationError, DeltaStateInvalidError
+from recruitment_agent.application.errors import (
+    ApplicationError,
+    DeltaStateInvalidError,
+    MailSyncPageLimitError,
+)
 from recruitment_agent.domain.mail import MailSyncState, SourceEmailCandidate
 from recruitment_agent.domain.ports import Clock
 
@@ -80,6 +84,15 @@ class MailSyncStore(Protocol):
         started_at: datetime,
     ) -> MailSyncState: ...
 
+    async def ingest_page(
+        self,
+        *,
+        account_id: UUID,
+        folder_id: str,
+        messages: tuple[SourceEmailCandidate, ...],
+        cursor: str,
+    ) -> MailIngestionResult: ...
+
     async def complete_sync(
         self,
         *,
@@ -99,9 +112,23 @@ class MailSyncStore(Protocol):
         finished_at: datetime,
     ) -> None: ...
 
+    async def invalidate_cursor(
+        self,
+        *,
+        account_id: UUID,
+        folder_id: str,
+        error_code: str,
+        finished_at: datetime,
+    ) -> None: ...
+
 
 class MailSyncService:
-    """Follow delta pagination and commit metadata only after a complete round."""
+    """Follow delta pagination and persist every completed page durably.
+
+    Each fully fetched page is committed together with its continuation cursor,
+    so an interrupted or page-capped synchronization resumes where it stopped
+    instead of repeating (or permanently failing) the whole enumeration.
+    """
 
     def __init__(
         self,
@@ -127,7 +154,9 @@ class MailSyncService:
             started_at=self._clock.now(),
         )
         cursor = state.delta_link
-        messages: list[SourceEmailCandidate] = []
+        observed = 0
+        inserted = 0
+        updated = 0
         visited_links: set[str] = set()
 
         try:
@@ -137,12 +166,20 @@ class MailSyncService:
                     folder_id=folder_id,
                     cursor=cursor,
                 )
-                messages.extend(page.messages)
+                observed += len(page.messages)
 
                 if page.next_link is not None:
                     if page.next_link in visited_links:
                         raise DeltaStateInvalidError("delta pagination cycle detected")
                     visited_links.add(page.next_link)
+                    result = await self._store.ingest_page(
+                        account_id=account_id,
+                        folder_id=folder_id,
+                        messages=page.messages,
+                        cursor=page.next_link,
+                    )
+                    inserted += result.inserted
+                    updated += result.updated
                     cursor = page.next_link
                     continue
 
@@ -152,23 +189,45 @@ class MailSyncService:
                 result = await self._store.complete_sync(
                     account_id=account_id,
                     folder_id=folder_id,
-                    messages=tuple(messages),
+                    messages=page.messages,
                     delta_link=page.delta_link,
                     finished_at=self._clock.now(),
                 )
                 return MailSyncResult(
-                    observed=len(messages),
-                    inserted=result.inserted,
-                    updated=result.updated,
+                    observed=observed,
+                    inserted=inserted + result.inserted,
+                    updated=updated + result.updated,
                     delta_link=page.delta_link,
                 )
 
-            raise DeltaStateInvalidError("delta pagination exceeded the configured page limit")
+            raise MailSyncPageLimitError(
+                "delta pagination reached the per-invocation page budget"
+            )
+        except DeltaStateInvalidError as exc:
+            # Microsoft's documented recovery for an unusable delta token is a
+            # fresh full enumeration, so drop the cursor instead of wedging
+            # every future synchronization on the same poisoned state.
+            await self._store.invalidate_cursor(
+                account_id=account_id,
+                folder_id=folder_id,
+                error_code=exc.code,
+                finished_at=self._clock.now(),
+            )
+            raise
         except ApplicationError as exc:
             await self._store.fail_sync(
                 account_id=account_id,
                 folder_id=folder_id,
                 error_code=exc.code,
+                finished_at=self._clock.now(),
+            )
+            raise
+        except Exception:
+            # Unexpected failures must not leave the folder stuck in SYNCING.
+            await self._store.fail_sync(
+                account_id=account_id,
+                folder_id=folder_id,
+                error_code="SYNC_UNEXPECTED",
                 finished_at=self._clock.now(),
             )
             raise

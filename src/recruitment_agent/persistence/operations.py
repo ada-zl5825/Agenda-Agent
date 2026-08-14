@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import ColumnElement, func, select, update
@@ -258,11 +258,18 @@ class SqlAlchemyOperationsStore:
         now: datetime,
         limit: int,
     ) -> tuple[UUID, ...]:
+        # Freshly submitted operations are given a short head start so the
+        # low-latency queue worker can claim them before the dispatch timer
+        # duplicates the enqueue and executes them inline.
+        fresh_cutoff = now - timedelta(seconds=30)
         async with self._session_factory() as session:
             values = await session.scalars(
                 select(OperationRunModel.id)
                 .where(
-                    (OperationRunModel.status == OperationStatus.QUEUED.value)
+                    (
+                        (OperationRunModel.status == OperationStatus.QUEUED.value)
+                        & (OperationRunModel.requested_at <= fresh_cutoff)
+                    )
                     | (
                         (OperationRunModel.status == OperationStatus.RUNNING.value)
                         & (OperationRunModel.lease_expires_at < now)

@@ -142,7 +142,12 @@ class GraphCalendarClient:
                 except ValueError:
                     try:
                         retry_at = parsedate_to_datetime(raw_retry_after)
-                        now = parsedate_to_datetime(response.headers.get("Date", raw_retry_after))
+                        date_header = response.headers.get("Date")
+                        now = (
+                            parsedate_to_datetime(date_header)
+                            if date_header is not None
+                            else datetime.now(UTC)
+                        )
                         delay = max(0.0, (retry_at - now).total_seconds())
                     except (TypeError, ValueError, OverflowError):
                         delay = 2.0**attempt

@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from uuid import UUID
 
 from recruitment_agent.application.clock import SystemClock
+from recruitment_agent.application.errors import MailSyncInProgressError
 from recruitment_agent.application.mail_sync import MailSyncResult
 from recruitment_agent.application.operations import (
     OperationExecutor,
     OperationHandlers,
     OperationsControlService,
-    RuntimeCapabilities,
     RuntimeControl,
-    RuntimeControlDefaults,
     WorkflowOperationResult,
 )
 from recruitment_agent.config import (
@@ -25,19 +25,26 @@ from recruitment_agent.config import (
     get_operations_settings,
     get_settings,
 )
-from recruitment_agent.config.settings import get_azure_openai_settings
 from recruitment_agent.jobs.daily_brief import run_daily_brief_job, send_daily_brief_now
 from recruitment_agent.jobs.mail_processing import (
     MailProcessingJobRequest,
     run_mail_processing_job,
 )
 from recruitment_agent.jobs.mail_sync import run_mail_sync_job
+from recruitment_agent.jobs.runtime_control import (
+    runtime_capabilities,
+    runtime_control_defaults,
+)
 from recruitment_agent.operations.azure_queue import azure_operation_queue
 from recruitment_agent.persistence.operations import SqlAlchemyOperationsStore
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
 
 LOGGER = logging.getLogger(__name__)
 _RUNTIME_CONTROL_STARTUP_RETRY_DELAYS = (0.5, 1.0, 2.0)
+
+#: Stop starting new inline executions after this long so one dispatch tick
+#: stays far below the Functions host timeout; remaining work runs next tick.
+_DISPATCH_EXECUTION_BUDGET_SECONDS = 240.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,31 +78,6 @@ class ProductionOperationHandlers(OperationHandlers):
             status=str(result.state["status"]),
             interrupted=result.interrupted,
         )
-
-
-def runtime_control_defaults() -> RuntimeControlDefaults:
-    settings = get_microsoft_settings()
-    return RuntimeControlDefaults(
-        mail_sync_enabled=settings.mail_sync_enabled,
-        workflow_enabled=settings.workflow_processing_enabled,
-        calendar_write_enabled=(
-            settings.workflow_processing_enabled and settings.calendar_sync_enabled
-        ),
-        daily_brief_enabled=settings.daily_brief_enabled,
-        daily_brief_recipient=settings.daily_brief_recipient,
-    )
-
-
-def runtime_capabilities() -> RuntimeCapabilities:
-    settings = get_microsoft_settings()
-    return RuntimeCapabilities(
-        workflow_processing_available=get_azure_openai_settings().llm_enabled,
-        calendar_write_available=settings.calendar_sync_enabled,
-        daily_brief_available=(
-            settings.public_app_base_url is not None
-            and settings.web_session_signing_key is not None
-        ),
-    )
 
 
 @asynccontextmanager
@@ -161,7 +143,14 @@ async def run_operation_dispatch_job() -> int:
             extra={"error_type": type(exc).__name__},
         )
         return 0
-    for operation_id in operation_ids:
+    started = time.monotonic()
+    for index, operation_id in enumerate(operation_ids):
+        if time.monotonic() - started > _DISPATCH_EXECUTION_BUDGET_SECONDS:
+            LOGGER.info(
+                "operations_dispatch_budget_exhausted",
+                extra={"deferred": len(operation_ids) - index},
+            )
+            break
         try:
             await run_operation_job(operation_id)
         except Exception as exc:
@@ -197,7 +186,10 @@ async def run_scheduled_mail_sync_job() -> None:
             extra={"error_type": type(exc).__name__},
         )
         return
-    await run_mail_sync_job(force=True)
+    try:
+        await run_mail_sync_job(force=True)
+    except MailSyncInProgressError:
+        LOGGER.info("mail_sync_skipped_lease_held")
 
 
 async def run_scheduled_daily_brief_job() -> None:

@@ -1,7 +1,7 @@
 """Idempotent deterministic Daily Brief generation and delivery."""
 
-from dataclasses import replace
-from datetime import date, datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -24,6 +24,51 @@ class BriefDispatchStatus(StrEnum):
     ACCEPTED = "accepted"
     FAILED = "failed"
     UNCERTAIN = "uncertain"
+
+
+#: An in-flight dispatch older than this is considered crashed. It is closed as
+#: UNCERTAIN instead of being retried because the Graph send may have happened.
+DISPATCH_LEASE = timedelta(minutes=10)
+
+#: Total dispatch claims allowed per local day, counting the first attempt.
+MAX_DISPATCH_ATTEMPTS = 3
+
+#: Error code recorded when a crashed in-flight dispatch is closed.
+DISPATCH_ABANDONED_ERROR_CODE = "BRIEF_DISPATCH_ABANDONED"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DispatchClaimDecision:
+    """Deterministic outcome for one claim attempt against the day's audit row."""
+
+    claim: bool
+    mark_abandoned: bool = False
+
+
+def resolve_dispatch_claim(
+    *,
+    status: BriefDispatchStatus,
+    attempt_count: int,
+    dispatch_started_at: datetime,
+    now: datetime,
+) -> DispatchClaimDecision:
+    """Decide whether an existing audit row may be claimed again.
+
+    - An active ``dispatching`` row is exclusive: concurrent claims are refused.
+    - A ``dispatching`` row older than :data:`DISPATCH_LEASE` belongs to a
+      crashed dispatch whose Graph outcome is unknown; it is closed as
+      UNCERTAIN and never retried automatically.
+    - A ``failed`` row means the mail was definitely not sent, so bounded
+      same-day retries are safe.
+    - ``accepted`` and ``uncertain`` rows are terminal for the day.
+    """
+    if status is BriefDispatchStatus.DISPATCHING:
+        if now - dispatch_started_at >= DISPATCH_LEASE:
+            return DispatchClaimDecision(claim=False, mark_abandoned=True)
+        return DispatchClaimDecision(claim=False)
+    if status is BriefDispatchStatus.FAILED and attempt_count < MAX_DISPATCH_ATTEMPTS:
+        return DispatchClaimDecision(claim=True)
+    return DispatchClaimDecision(claim=False)
 
 
 class DailyBriefStore(Protocol):

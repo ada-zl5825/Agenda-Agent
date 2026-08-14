@@ -67,13 +67,54 @@ class SqlAlchemyWorkflowPersistence:
                 or stored.model_deployment != run.model_deployment
             ):
                 raise ValueError("processing run identity or version does not match")
+            # A stale retry must never pull a finished or ignored email back
+            # into PROCESSING; only genuinely unfinished states are claimed.
             source_result = await session.execute(
                 update(SourceEmailModel)
-                .where(SourceEmailModel.id == run.source_email_id)
+                .where(
+                    SourceEmailModel.id == run.source_email_id,
+                    SourceEmailModel.processing_status.in_(
+                        (
+                            SourceEmailProcessingStatus.PENDING.value,
+                            SourceEmailProcessingStatus.PROCESSING.value,
+                            SourceEmailProcessingStatus.NEEDS_REVIEW.value,
+                            SourceEmailProcessingStatus.FAILED.value,
+                        )
+                    ),
+                )
                 .values(processing_status=SourceEmailProcessingStatus.PROCESSING.value)
             )
             if getattr(source_result, "rowcount", 0) != 1:
-                raise RuntimeError("source email disappeared while starting processing")
+                source = await session.get(SourceEmailModel, run.source_email_id)
+                if source is None:
+                    raise RuntimeError("source email disappeared while starting processing")
+
+    async def get_run_status(
+        self,
+        processing_run_id: UUID,
+    ) -> ProcessingRunStatus | None:
+        async with self._session_factory() as session:
+            value = await session.scalar(
+                select(ProcessingRunModel.status).where(
+                    ProcessingRunModel.id == processing_run_id
+                )
+            )
+        return None if value is None else ProcessingRunStatus(value)
+
+    async def mark_source_needs_review(self, source_email_id: UUID) -> None:
+        """Distinguish 'waiting on a human' from 'actively processing'."""
+        async with self._session_factory.begin() as session:
+            await session.execute(
+                update(SourceEmailModel)
+                .where(
+                    SourceEmailModel.id == source_email_id,
+                    SourceEmailModel.processing_status
+                    == SourceEmailProcessingStatus.PROCESSING.value,
+                )
+                .values(
+                    processing_status=SourceEmailProcessingStatus.NEEDS_REVIEW.value
+                )
+            )
 
     async def advance_run(
         self,

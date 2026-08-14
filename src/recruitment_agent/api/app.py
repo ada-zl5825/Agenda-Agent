@@ -33,6 +33,8 @@ def create_app() -> FastAPI:
         version=__version__,
         docs_url=None,
         redoc_url=None,
+        # The control-plane path catalog must not be publicly enumerable.
+        openapi_url=None,
     )
     application.include_router(agent_router)
     application.include_router(auth_router)

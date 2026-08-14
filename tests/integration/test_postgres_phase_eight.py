@@ -67,3 +67,57 @@ async def test_daily_brief_snapshot_and_claim_are_account_scoped_and_idempotent(
     assert audit.status == "accepted"
     assert audit.attempt_count == 1
     assert audit.error_code is None
+
+
+@pytest.mark.asyncio
+async def test_failed_dispatch_can_be_retried_and_stale_dispatch_goes_uncertain() -> None:
+    from datetime import timedelta
+
+    from recruitment_agent.application.daily_brief import BriefDispatchStatus
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url()
+        config = Config("alembic.ini")
+        config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+        command.upgrade(config, "head")
+        engine = create_database_engine(database_url)
+        session_factory = create_session_factory(engine)
+        account_id = uuid4()
+        async with session_factory.begin() as session:
+            session.add(MicrosoftConnectionModel(id=account_id))
+
+        store = SqlAlchemyDailyBriefStore(session_factory)
+        brief_date = date(2026, 8, 14)
+
+        assert await store.claim_dispatch(
+            account_id=account_id, brief_date=brief_date, timezone="Europe/London"
+        )
+        await store.mark_failed(
+            account_id=account_id,
+            brief_date=brief_date,
+            status=BriefDispatchStatus.FAILED,
+            error_code="BRIEF_SEND_FAILED",
+        )
+        # A definite failure may be retried the same local day.
+        retried = await store.claim_dispatch(
+            account_id=account_id, brief_date=brief_date, timezone="Europe/London"
+        )
+
+        # Simulate a crashed in-flight dispatch by aging the started timestamp.
+        async with session_factory.begin() as session:
+            model = await session.scalar(select(DailyBriefModel))
+            assert model is not None
+            model.dispatch_started_at = datetime.now(UTC) - timedelta(minutes=30)
+        stale_claim = await store.claim_dispatch(
+            account_id=account_id, brief_date=brief_date, timezone="Europe/London"
+        )
+        async with session_factory() as session:
+            audit = await session.scalar(select(DailyBriefModel))
+        await engine.dispose()
+
+    assert retried
+    assert not stale_claim
+    assert audit is not None
+    assert audit.status == "uncertain"
+    assert audit.error_code == "BRIEF_DISPATCH_ABANDONED"
+    assert audit.attempt_count == 2

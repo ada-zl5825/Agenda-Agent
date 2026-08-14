@@ -61,6 +61,39 @@ async def test_scheduled_mail_sync_recovers_the_complete_cold_start_boundary(
 
 
 @pytest.mark.asyncio
+async def test_scheduled_sync_skips_quietly_when_another_sync_holds_the_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a lease collision is expected coordination, not a failure."""
+    from recruitment_agent.application.errors import MailSyncInProgressError
+
+    class Service:
+        async def get_control(self) -> RuntimeControl:
+            return _control()
+
+    @asynccontextmanager
+    async def service():
+        yield Service()
+
+    async def busy_sync(*, force: bool = False):
+        del force
+        raise MailSyncInProgressError("lease held")
+
+    errors: list[object] = []
+    monkeypatch.setattr(operation_jobs, "operations_control_service", service)
+    monkeypatch.setattr(operation_jobs, "run_mail_sync_job", busy_sync)
+    monkeypatch.setattr(
+        operation_jobs.LOGGER,
+        "error",
+        lambda *args, **kwargs: errors.append(args),
+    )
+
+    await operation_jobs.run_scheduled_mail_sync_job()
+
+    assert errors == []
+
+
+@pytest.mark.asyncio
 async def test_exhausted_startup_retry_logs_only_the_exception_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

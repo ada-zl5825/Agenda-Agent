@@ -52,9 +52,32 @@ class RecruitmentWorkflowRunner:
         self._graph = graph
         self._context = context
 
+    _FINAL_RUN_STATUSES = frozenset(
+        {
+            ProcessingRunStatus.COMPLETED,
+            ProcessingRunStatus.IGNORED,
+            ProcessingRunStatus.FAILED,
+        }
+    )
+
     async def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
         processing_run_id = request.processing_run_id or uuid4()
         thread_id = str(processing_run_id)
+        # Retries reuse the same run id. Re-invoking a finished LangGraph thread
+        # would re-execute nodes from START and drag a PROCESSED email back into
+        # processing, so a finished run is returned as-is instead.
+        existing = await self._context.persistence.get_run_status(processing_run_id)
+        if existing in self._FINAL_RUN_STATUSES:
+            final_state = cast(
+                RecruitmentGraphState,
+                {
+                    "processing_run_id": str(processing_run_id),
+                    "graph_thread_id": thread_id,
+                    "source_email_id": str(request.source_email_id),
+                    "status": existing.value,
+                },
+            )
+            return WorkflowInvocationResult(state=final_state, interrupt_payloads=())
         initial: RecruitmentGraphInput = {
             "processing_run_id": str(processing_run_id),
             "graph_thread_id": thread_id,
@@ -122,4 +145,8 @@ class RecruitmentWorkflowRunner:
             for item in raw_interrupts
             if isinstance(item.value, dict)
         )
+        if payloads:
+            # The email is waiting on a human decision, not actively running;
+            # the distinct status keeps retries and dashboards from touching it.
+            await self._context.persistence.mark_source_needs_review(source_email_id)
         return WorkflowInvocationResult(state=state, interrupt_payloads=payloads)

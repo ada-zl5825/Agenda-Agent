@@ -40,6 +40,7 @@ from recruitment_agent.graph.runner import (
     WorkflowInvocationResult,
     WorkflowStartRequest,
 )
+from recruitment_agent.jobs.runtime_control import read_calendar_write_control
 from recruitment_agent.links.azure import azure_link_key_provider
 from recruitment_agent.links.encryption import ActionLinkEncryptor
 from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
@@ -92,7 +93,12 @@ async def resume_mail_processing_job(
     decision: ReviewDecision,
 ) -> WorkflowInvocationResult:
     """Resume an interrupted workflow with a server-validated typed decision."""
-    async with _production_workflow_runner() as runner:
+    # The resume path must honor the same database-backed calendar kill switch
+    # as the start path; leaving it unset would re-enable calendar writes.
+    calendar_write_enabled = await read_calendar_write_control()
+    async with _production_workflow_runner(
+        calendar_write_enabled=calendar_write_enabled
+    ) as runner:
         return await runner.resume(
             processing_run_id=processing_run_id,
             source_email_id=source_email_id,
@@ -189,9 +195,11 @@ async def _production_workflow_runner(
                             ),
                         ),
                         clock=clock,
+                        # Fail closed: calendar writes require both the deployment
+                        # capability and an explicit runtime-control decision.
                         enabled=(
                             microsoft_settings.calendar_sync_enabled
-                            and calendar_write_enabled is not False
+                            and calendar_write_enabled is True
                         ),
                     ),
                     clock=clock,

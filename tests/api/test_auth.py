@@ -121,3 +121,47 @@ async def test_mailbox_connection_requires_admin_and_preserves_admin_session() -
     assert completed.status_code == 303
     assert completed.headers["location"] == "/agent?notice=mailbox-connected"
     assert sessions.cookie_name not in completed.cookies
+
+
+@pytest.mark.asyncio
+async def test_logout_deletes_the_session_cookie() -> None:
+    application = create_app()
+    sessions = WebSessionManager(key=b"s" * 32, clock=Clock())
+    application.dependency_overrides[get_web_session_manager] = lambda: sessions
+    transport = httpx.ASGITransport(app=application)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://test",
+        follow_redirects=False,
+    ) as client:
+        client.cookies.set(sessions.cookie_name, "any-session-token")
+        response = await client.post("/auth/logout")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/auth/login"
+    set_cookie = response.headers["set-cookie"]
+    assert sessions.cookie_name in set_cookie
+    assert 'Max-Age=0' in set_cookie or "expires" in set_cookie.lower()
+
+
+@pytest.mark.asyncio
+async def test_production_session_cookie_is_secure_even_over_plain_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a misconfigured proxy must not downgrade the cookie flags."""
+    monkeypatch.setenv("APP_ENV", "production")
+    application = create_app()
+    service = AuthorizationService()
+    sessions = WebSessionManager(key=b"s" * 32, clock=Clock())
+    application.dependency_overrides[get_authorization_service] = lambda: service
+    application.dependency_overrides[get_web_session_manager] = lambda: sessions
+    transport = httpx.ASGITransport(app=application)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        follow_redirects=False,
+    ) as client:
+        callback = await client.get("/auth/callback?code=opaque-code&state=opaque-state")
+
+    assert callback.status_code == 303
+    assert "secure" in callback.headers["set-cookie"].lower()

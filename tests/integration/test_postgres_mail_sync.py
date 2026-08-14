@@ -1,5 +1,5 @@
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -71,6 +71,75 @@ async def test_migrations_and_duplicate_mail_upsert_against_postgres() -> None:
     assert (first.inserted, first.updated) == (1, 0)
     assert (second.inserted, second.updated) == (0, 1)
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_lease_page_progress_and_cursor_invalidation() -> None:
+    from recruitment_agent.application.errors import MailSyncInProgressError
+
+    with PostgresContainer("postgres:17-alpine", driver="psycopg") as postgres:
+        database_url = postgres.get_connection_url()
+        config = Config("alembic.ini")
+        config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+        command.upgrade(config, "head")
+
+        engine = create_database_engine(database_url)
+        session_factory = create_session_factory(engine)
+        account_id = uuid4()
+        await SqlAlchemyMicrosoftAuthStore(session_factory).ensure_connection(account_id)
+        store = SqlAlchemyMailSyncStore(session_factory)
+        now = datetime(2026, 8, 12, tzinfo=UTC)
+        message = SourceEmailCandidate(
+            graph_message_id="graph-lease-1",
+            internet_message_id=None,
+            subject="Interview",
+            sender_domain="example.com",
+            received_at=now,
+            outlook_web_link=None,
+            has_attachments=False,
+        )
+
+        await store.begin_sync(account_id=account_id, folder_id="inbox", started_at=now)
+        with pytest.raises(MailSyncInProgressError):
+            await store.begin_sync(
+                account_id=account_id,
+                folder_id="inbox",
+                started_at=now + timedelta(minutes=1),
+            )
+        # A crashed sync (stale lease) may be taken over.
+        await store.begin_sync(
+            account_id=account_id,
+            folder_id="inbox",
+            started_at=now + timedelta(minutes=30),
+        )
+
+        page_result = await store.ingest_page(
+            account_id=account_id,
+            folder_id="inbox",
+            messages=(message,),
+            cursor="https://graph.microsoft.com/v1.0/next-1",
+        )
+        async with session_factory() as session:
+            mid_state = await session.scalar(select(MailSyncStateModel))
+            assert mid_state is not None
+            assert mid_state.delta_link == "https://graph.microsoft.com/v1.0/next-1"
+            assert mid_state.status == "syncing"
+
+        await store.invalidate_cursor(
+            account_id=account_id,
+            folder_id="inbox",
+            error_code="DELTA_STATE_INVALID",
+            finished_at=now + timedelta(minutes=31),
+        )
+        async with session_factory() as session:
+            state = await session.scalar(select(MailSyncStateModel))
+        await engine.dispose()
+
+    assert (page_result.inserted, page_result.updated) == (1, 0)
+    assert state is not None
+    assert state.delta_link is None
+    assert state.status == "failed"
+    assert state.error_code == "DELTA_STATE_INVALID"
 
 
 @pytest.mark.asyncio

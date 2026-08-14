@@ -327,6 +327,53 @@ def test_terminal_status_is_not_downgraded_by_older_evidence() -> None:
     )
 
 
+def test_terminal_decisions_never_flip_between_offer_and_rejected() -> None:
+    """Regression: a late or misclassified email must not overturn a terminal."""
+    assert (
+        next_application_status(
+            ApplicationStatus.REJECTED,
+            ApplicationStatus.OFFER,
+        )
+        is ApplicationStatus.REJECTED
+    )
+    assert (
+        next_application_status(
+            ApplicationStatus.OFFER,
+            ApplicationStatus.REJECTED,
+        )
+        is ApplicationStatus.OFFER
+    )
+
+
+@pytest.mark.asyncio
+async def test_unnormalized_role_with_single_open_application_requires_review() -> None:
+    """Regression: an email naming an unrecognized role must not auto-attach to
+    the company's only open application, which may be a different role."""
+    evidence = _evidence(RecruitmentEventType.INTERVIEW).model_copy(
+        update={"role_normalized": None}
+    )
+    service = RecruitmentDomainService(StubStore(applications=(_application(),)))
+
+    resolution = await service.resolve_application(evidence)
+
+    assert resolution.kind is ApplicationResolutionKind.REVIEW
+    assert resolution.reason == "unnormalized_role_ambiguous"
+    assert resolution.candidate_application_ids == (APPLICATION_ID,)
+
+
+@pytest.mark.asyncio
+async def test_roleless_email_still_attaches_to_the_single_open_application() -> None:
+    evidence = _evidence(RecruitmentEventType.REJECTION, starts_at=None).model_copy(
+        update={"role_name": None, "role_normalized": None}
+    )
+    service = RecruitmentDomainService(StubStore(applications=(_application(),)))
+
+    resolution = await service.resolve_application(evidence)
+
+    assert resolution.kind is ApplicationResolutionKind.EXISTING
+    assert resolution.application_id == APPLICATION_ID
+
+
 def test_semantic_fingerprint_normalizes_equivalent_datetime_offsets() -> None:
     london = _evidence(RecruitmentEventType.INTERVIEW)
     china_offset = timezone(timedelta(hours=8))

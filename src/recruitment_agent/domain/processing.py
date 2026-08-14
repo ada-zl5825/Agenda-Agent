@@ -310,10 +310,12 @@ def next_application_status(
         return current
     if current is ApplicationStatus.WITHDRAWN:
         return current
+    if current in {ApplicationStatus.OFFER, ApplicationStatus.REJECTED}:
+        # Terminal decisions are never flipped automatically; a late or
+        # misclassified email must not turn REJECTED into OFFER or vice versa.
+        return current
     if desired in {ApplicationStatus.OFFER, ApplicationStatus.REJECTED}:
         return desired
-    if current in {ApplicationStatus.OFFER, ApplicationStatus.REJECTED}:
-        return current
     ranks = {
         ApplicationStatus.UNKNOWN: 0,
         ApplicationStatus.APPLIED: 1,

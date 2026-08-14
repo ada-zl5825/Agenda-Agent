@@ -34,7 +34,7 @@ async def run_daily_brief_job(*, recipient: str, force: bool = False) -> bool | 
         return None
     app_settings = get_settings()
     clock = SystemClock()
-    if not is_daily_brief_delivery_hour(
+    if not is_daily_brief_due(
         now=clock.now(),
         timezone=app_settings.user_timezone,
         local_hour=settings.daily_brief_local_hour,
@@ -54,14 +54,20 @@ async def send_daily_brief_now(*, recipient: str) -> bool:
         )
 
 
-def is_daily_brief_delivery_hour(
+def is_daily_brief_due(
     *,
     now: datetime,
     timezone: str,
     local_hour: int,
 ) -> bool:
-    """Filter the hourly UTC timer using the configured DST-aware local time."""
-    return now.astimezone(ZoneInfo(timezone)).hour == local_hour
+    """Report whether the DST-aware local delivery time has been reached today.
+
+    The comparison is ``>=`` rather than exact-hour equality so that a late or
+    skipped timer tick (cold start, host restart, or a spring-forward hour that
+    does not exist locally) still delivers later the same local day. At-most-once
+    delivery is enforced by the per-day dispatch claim, not by this filter.
+    """
+    return now.astimezone(ZoneInfo(timezone)).hour >= local_hour
 
 
 async def render_daily_brief_today(*, account_id: UUID) -> RenderedBrief:
