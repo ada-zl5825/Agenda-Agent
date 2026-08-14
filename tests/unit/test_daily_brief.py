@@ -306,3 +306,51 @@ async def test_uncertain_send_is_audited_and_never_reclaimed() -> None:
         account_id=store.snapshot.account_id,
         recipient="me@test",
     )
+
+
+def test_brief_console_preview_uses_console_chrome_and_keeps_email_mail_safe() -> None:
+    review_id = uuid4()
+    snapshot = DailyBriefSnapshot(
+        account_id=uuid4(),
+        brief_date=date(2026, 8, 13),
+        timezone="Europe/London",
+        generated_at=Clock().now(),
+        items=(
+            BriefItem(
+                identity="review:1",
+                section=BriefSection.NEEDS_REVIEW,
+                company="Example",
+                role="Engineer",
+                stage="确认时区",
+                review_id=review_id,
+                review_url=f"https://agent.example/reviews/{review_id}",
+            ),
+        ),
+    )
+    renderer = DailyBriefRenderer()
+    email = renderer.render(snapshot)
+    preview = renderer.render_console(snapshot)
+
+    assert "Agenda Agent" in preview
+    assert "今日 Daily Brief" in preview
+    assert "待确认" in preview
+    assert "打开 Review" in preview
+    assert "class=\"topbar\"" in preview
+    assert "Recruitment Brief" in email.html
+    assert "Open Review" in email.html
+    assert "class=\"topbar\"" not in email.html
+    assert "Agenda Agent" not in email.html
+
+
+def test_empty_brief_console_preview_shows_empty_state() -> None:
+    snapshot = DailyBriefSnapshot(
+        account_id=uuid4(),
+        brief_date=date(2026, 8, 13),
+        timezone="Europe/London",
+        generated_at=Clock().now(),
+        items=(),
+    )
+    html = DailyBriefRenderer().render_console(snapshot)
+
+    assert "今天没有需要关注的招聘事项." in html
+    assert "无需处理" in html

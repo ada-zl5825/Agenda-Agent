@@ -225,8 +225,9 @@ async def test_review_pages_require_session_and_post_requires_bound_csrf() -> No
     assert page.status_code == 200
     assert "抽出的事件" in page.text
     assert "时间证据" in page.text
-    assert "Field differences" in page.text
+    assert "字段差异" in page.text or "现有记录 vs 建议" in page.text
     assert "副作用预览" in page.text
+    assert "Agenda Agent" in page.text
     assert "打开原邮件" in page.text
     assert "确认时区" in page.text
     assert "Example" in page.text

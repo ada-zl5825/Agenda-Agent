@@ -84,7 +84,8 @@ Every future Daily Brief `NEEDS REVIEW` item must link to the authenticated grap
 decision surface: a GET from an email client cannot resolve a review, resume a graph, write domain
 state or update Calendar.
 
-The detail page renders a deterministic read model assembled from PostgreSQL source-of-truth data:
+The authenticated Review and Brief preview pages reuse the Agent console visual chrome. The
+detail page renders a deterministic read model assembled from PostgreSQL source-of-truth data:
 
 - review ID/type/status/reason and age;
 - safe source-email metadata and the Outlook original-email link;
