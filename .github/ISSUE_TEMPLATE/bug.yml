@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a functional defect without secrets or raw email content.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste raw email bodies, OAuth tokens, Key Vault values, decrypted
+        action URLs, or production hostnames you do not intend to publish.
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Use fixtures or redacted examples only.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: This report does not include secrets, tokens, or raw email content.
+          required: true

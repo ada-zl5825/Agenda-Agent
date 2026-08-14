@@ -302,8 +302,10 @@ registration, and the GitHub `production` environment configuration:
   -GitHubRepository "<owner>/<repo>"
 ```
 
-The script defaults currently point at this repository's private production names. Pass both
-parameters explicitly when bootstrapping any other subscription or GitHub repository.
+Pass both parameters explicitly. Do not write personal mailbox addresses as GitHub
+environment variables; a public repository exposes variable values.
+`ADMIN_MICROSOFT_HOME_ACCOUNT_ID` remains a `production` variable and is treated as a public
+fingerprint.
 
 The command requires Azure CLI and GitHub CLI authentication. It generates all application secrets
 locally and writes them directly to GitHub environment secrets. Re-running the command rotates the

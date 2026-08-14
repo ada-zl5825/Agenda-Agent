@@ -18,6 +18,7 @@ Related project files:
 | File | Contents |
 | --- | --- |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Local development, quality gates, pull requests. |
+| [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Contributor Covenant. |
 | [../SECURITY.md](../SECURITY.md) | Vulnerability reporting and security boundaries. |
 | [../.env.example](../.env.example) | All application settings. Never commit a real `.env`. |
 | [../infra/main.bicep](../infra/main.bicep) | Production Azure topology. |

@@ -4,8 +4,8 @@ param(
     [ValidateSet("check", "migrate", "seed-companies")]
     [string] $Operation = "check",
 
-    [Parameter()]
-    [string] $ResourceGroupName = "rg-agenda-agent-prod-uks",
+    [Parameter(Mandatory)]
+    [string] $ResourceGroupName,
 
     [Parameter()]
     [string] $JobName = ""

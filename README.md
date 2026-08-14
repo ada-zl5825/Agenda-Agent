@@ -82,6 +82,7 @@ flowchart LR
 | [测试](docs/06_TEST_PLAN.md) | 自动化覆盖范围 |
 | [开源清单](docs/07_OPEN_SOURCE.md) | 公开仓库前要处理的事项 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 本地开发与 PR |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 参与准则 |
 | [SECURITY.md](SECURITY.md) | 漏洞报告与安全边界 |
 
 ## 本地运行
@@ -150,4 +151,4 @@ Copyright 2026 Theo。本项目按 [Apache License 2.0](LICENSE) 授权，说明
 
 Microsoft、Outlook、Azure、LangGraph、LangChain 是其各自所有者的商标。本项目不是这些公司的官方产品。
 
-公开仓库前仍须处理 GitHub `production` 环境里的明文变量，见 [docs/07_OPEN_SOURCE.md](docs/07_OPEN_SOURCE.md)。
+公开仓库后，fork 必须改掉部署工作流里的仓库名守卫，才能指向自己的 Azure 订阅。见 [docs/07_OPEN_SOURCE.md](docs/07_OPEN_SOURCE.md)。

@@ -4,16 +4,14 @@
 
 Do not open a public GitHub issue for a security problem.
 
-Send a private report to the repository owner and include:
+Use [private vulnerability reporting](https://github.com/ada-zl5825/Agenda-Agent/security/advisories/new)
+(`Security` → `Report a vulnerability`) and include:
 
 - a description of the issue and its impact
 - steps to reproduce, or the affected path / commit
 - whether any secret, token, or email content was exposed
 
 Do not attach raw email bodies, OAuth tokens, Key Vault values, or decrypted action URLs.
-
-If this repository is later public, prefer GitHub Security Advisories
-(`Security` → `Advisories` → `New draft security advisory`).
 
 ## Boundaries this project already enforces
 
