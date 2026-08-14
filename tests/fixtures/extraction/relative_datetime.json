@@ -12,7 +12,7 @@
     "action_required": false,
     "action_text": null,
     "action_link_ref": null,
-    "event_datetime": null,
+    "event_datetime": "2026-08-14T10:00:00+00:00",
     "deadline": null,
     "timezone_explicit": false,
     "timezone_text": null,
@@ -25,5 +25,5 @@
     "datetime_confidence": 0.8
   },
   "expected_status": "needs_review",
-  "expected_issues": ["datetime_unresolved", "timezone_ambiguous"]
+  "expected_issues": ["timezone_ambiguous"]
 }

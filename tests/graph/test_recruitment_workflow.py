@@ -31,6 +31,7 @@ from recruitment_agent.extraction.models import (
     ExtractionValidationStatus,
     RecruitmentExtraction,
 )
+from recruitment_agent.extraction.prompt import RECRUITMENT_EXTRACTION_PROMPT_VERSION
 from recruitment_agent.graph.builder import build_recruitment_graph
 from recruitment_agent.graph.context import RecruitmentGraphContext
 from recruitment_agent.graph.contracts import (
@@ -371,7 +372,7 @@ def _result(
     return WorkflowExtractionResult(
         extraction=extraction,
         validation=validation or _validation(ExtractionValidationStatus.VALID),
-        prompt_version="recruitment-extraction-v1",
+        prompt_version=RECRUITMENT_EXTRACTION_PROMPT_VERSION,
         company=company,
         role=role,
         company_resolution_audit_id=None,
@@ -581,40 +582,71 @@ async def test_timezone_interrupt_rejects_invalid_choice_then_resumes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unresolved_datetime_after_timezone_review_asks_for_override() -> None:
-    """A 126-forwarded Chinese wall-clock must not die after timezone-only review."""
+async def test_extracted_wall_clock_completes_after_timezone_confirmation() -> None:
+    """A named local time without a zone needs timezone supervision only."""
     persistence = FakeWorkflowPersistence()
-    needs_timezone = _ambiguous_time_result(
+    domain_store = FakeDomainStore()
+    needs_timezone = _result(
+        "interview_without_timezone",
+        validation=_validation(
+            ExtractionValidationStatus.NEEDS_REVIEW,
+            ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
+        ),
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=needs_timezone),
+        persistence,
+        domain_store=domain_store,
+    )
+
+    interrupted = await runner.start(_request())
+    completed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="Asia/Shanghai"),
+    )
+
+    assert interrupted.interrupt_payloads[0]["review_type"] == "TIMEZONE_AMBIGUITY"
+    assert completed.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert not completed.interrupted
+    assert domain_store.plans[0].event.starts_at == datetime(
+        2026, 8, 20, 14, tzinfo=ZoneInfo("Asia/Shanghai")
+    )
+
+
+@pytest.mark.asyncio
+async def test_unresolved_datetime_and_timezone_are_asked_together() -> None:
+    """Missing clock plus missing timezone stay on one review page."""
+    persistence = FakeWorkflowPersistence()
+    domain_store = FakeDomainStore()
+    needs_both = _ambiguous_time_result(
         None,
         ExtractionIssueCode.DATETIME_UNRESOLVED,
         ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
     )
     runner = _runner(
-        FakeActivities(prepared=_prepared(), extraction=needs_timezone),
+        FakeActivities(prepared=_prepared(), extraction=needs_both),
         persistence,
+        domain_store=domain_store,
     )
 
     interrupted = await runner.start(_request())
-    after_timezone = await runner.resume(
-        processing_run_id=RUN_ID,
-        source_email_id=SOURCE_EMAIL_ID,
-        decision=ReviewDecision(choice="Asia/Shanghai"),
-    )
     completed = await runner.resume(
         processing_run_id=RUN_ID,
         source_email_id=SOURCE_EMAIL_ID,
         decision=ReviewDecision(
-            choice="use_override",
-            override_value="2026-08-20 15:00",
+            choice="Asia/Shanghai",
+            clock_override="2026-08-20 15:00",
         ),
     )
 
     assert interrupted.interrupt_payloads[0]["review_type"] == "TIMEZONE_AMBIGUITY"
-    assert after_timezone.interrupted
-    assert after_timezone.interrupt_payloads[0]["review_type"] == "DATETIME_CONFLICT"
-    assert after_timezone.interrupt_payloads[0]["reason"] == "datetime_unresolved"
+    assert interrupted.interrupt_payloads[0]["reason"] == "timezone_and_datetime"
     assert completed.state["status"] == ProcessingRunStatus.COMPLETED.value
-    assert persistence.final_status is ProcessingRunStatus.COMPLETED
+    assert not completed.interrupted
+    assert domain_store.plans[0].event.starts_at == datetime(
+        2026, 8, 20, 15, tzinfo=ZoneInfo("Asia/Shanghai")
+    )
 
 
 @pytest.mark.asyncio

@@ -51,11 +51,15 @@ resume after deployment.
 - `app.review_items` stores a stable typed question, allowed choices, resolution and optimistic
   version. It never contains the checkpoint payload.
 - `agent_checkpoint.*` contains the LangGraph checkpointer tables isolated from `app.*`.
-- `TIMEZONE_AMBIGUITY` pauses only for `TIMEZONE_AMBIGUOUS`. Resume rebinds extracted
-  wall-clock values to the chosen IANA zone.
-- `DATETIME_CONFLICT` then pauses for `DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED` with
-  `use_override` (`YYYY-MM-DD HH:MM`) or `ignore`. The override is rebound to the reviewed
-  timezone before planning. `use_extracted` remains unused for timezone conflicts.
+- `TIMEZONE_AMBIGUITY` pauses only for `TIMEZONE_AMBIGUOUS`. The model extracts the
+  wall-clock even when the source omits a timezone; resume rebinds that clock to the
+  chosen IANA zone. The `+00:00` schema placeholder is not UTC. If the clock is also
+  unparsed, the same interrupt asks for timezone plus `YYYY-MM-DD HH:MM` (`timezone_and_datetime`
+  or `timezone_and_deadline`) so the operator stays on one page.
+- `DATETIME_CONFLICT` pauses for a remaining unparsed clock only when timezone was already
+  resolved, with `use_override` (`YYYY-MM-DD HH:MM`) or `ignore`. The form labels the field
+  as start time or deadline. After resolve, the browser continues to the next open review
+  for the same source email, or back to the queue.
 - `APPLICATION_AMBIGUITY` also pauses through `interrupt()`. Resume uses a typed
   `ReviewDecision`; invalid/stale decisions do not advance the workflow.
 - A workflow `ApplicationError` after resume redirects back to the same review page with an

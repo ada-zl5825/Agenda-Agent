@@ -25,6 +25,9 @@ from recruitment_agent.extraction.models import (
 )
 from recruitment_agent.graph.context import RecruitmentGraphContext
 from recruitment_agent.graph.contracts import (
+    COMBINED_DATETIME_REASON,
+    COMBINED_DEADLINE_REASON,
+    COMBINED_TIME_REASONS,
     ExtractionAudit,
     ProcessingRun,
     ProcessingRunStatus,
@@ -203,7 +206,7 @@ def _timezone_review(reason: str) -> ReviewRequest:
     return ReviewRequest(
         review_type=ReviewType.TIMEZONE_AMBIGUITY,
         reason=reason,
-        question="Select the timezone supported by the source evidence.",
+        question="请为抽出的本地开始时间选择时区. 日期和钟点不变, 只绑定时区.",
         allowed_choices=("Europe/London", "Asia/Shanghai", "other", "ignore"),
     )
 
@@ -218,14 +221,43 @@ def _datetime_review(reason: str) -> ReviewRequest:
 
 
 def _unresolved_datetime_review(reason: str) -> ReviewRequest:
+    if reason == "deadline_unresolved":
+        question = (
+            "邮件写了截止日期, 但无法解析成具体时钟. "
+            "请填写截止日期 (到期时间, 不是面试结束时间), 格式 YYYY-MM-DD HH:MM, 或忽略."
+        )
+    else:
+        question = (
+            "邮件写了面试或事件的开始时间, 但无法解析成具体时钟. "
+            "请填写开始时间 (不是结束时间), 格式 YYYY-MM-DD HH:MM, 或忽略."
+        )
     return ReviewRequest(
         review_type=ReviewType.DATETIME_CONFLICT,
         reason=reason,
-        question=(
-            "The email names a date or time that could not be parsed. "
-            "Enter the local date and time as YYYY-MM-DD HH:MM, or ignore."
-        ),
+        question=question,
         allowed_choices=("use_override", "ignore"),
+    )
+
+
+def _combined_time_review(*, clock: str) -> ReviewRequest:
+    if clock == "deadline":
+        return ReviewRequest(
+            review_type=ReviewType.TIMEZONE_AMBIGUITY,
+            reason=COMBINED_DEADLINE_REASON,
+            question=(
+                "请选择时区, 并填写截止日期 (到期时间, 不是面试结束时间). "
+                "日期格式 YYYY-MM-DD HH:MM."
+            ),
+            allowed_choices=("Europe/London", "Asia/Shanghai", "other", "ignore"),
+        )
+    return ReviewRequest(
+        review_type=ReviewType.TIMEZONE_AMBIGUITY,
+        reason=COMBINED_DATETIME_REASON,
+        question=(
+            "请选择时区, 并填写面试或事件的开始时间 (不是结束时间). "
+            "日期格式 YYYY-MM-DD HH:MM."
+        ),
+        allowed_choices=("Europe/London", "Asia/Shanghai", "other", "ignore"),
     )
 
 
@@ -296,18 +328,26 @@ def _next_review_request(
         reason = "datetime_conflict"
         if reason not in reviewed_reasons:
             return _datetime_review(reason)
-    if ExtractionIssueCode.TIMEZONE_AMBIGUOUS in issue_codes:
-        reason = "timezone_ambiguity"
-        if reason not in reviewed_reasons:
-            return _timezone_review(reason)
-    if ExtractionIssueCode.DATETIME_UNRESOLVED in issue_codes:
-        reason = "datetime_unresolved"
-        if reason not in reviewed_reasons:
-            return _unresolved_datetime_review(reason)
-    if ExtractionIssueCode.DEADLINE_UNRESOLVED in issue_codes:
-        reason = "deadline_unresolved"
-        if reason not in reviewed_reasons:
-            return _unresolved_datetime_review(reason)
+    timezone_reviewed = bool(
+        reviewed_reasons
+        & {"timezone_ambiguity", COMBINED_DATETIME_REASON, COMBINED_DEADLINE_REASON}
+    )
+    datetime_reviewed = bool(
+        reviewed_reasons & {"datetime_unresolved", COMBINED_DATETIME_REASON}
+    )
+    deadline_reviewed = bool(
+        reviewed_reasons & {"deadline_unresolved", COMBINED_DEADLINE_REASON}
+    )
+    if ExtractionIssueCode.TIMEZONE_AMBIGUOUS in issue_codes and not timezone_reviewed:
+        if ExtractionIssueCode.DATETIME_UNRESOLVED in issue_codes and not datetime_reviewed:
+            return _combined_time_review(clock="datetime")
+        if ExtractionIssueCode.DEADLINE_UNRESOLVED in issue_codes and not deadline_reviewed:
+            return _combined_time_review(clock="deadline")
+        return _timezone_review("timezone_ambiguity")
+    if ExtractionIssueCode.DATETIME_UNRESOLVED in issue_codes and not datetime_reviewed:
+        return _unresolved_datetime_review("datetime_unresolved")
+    if ExtractionIssueCode.DEADLINE_UNRESOLVED in issue_codes and not deadline_reviewed:
+        return _unresolved_datetime_review("deadline_unresolved")
     recognized_codes = {
         ExtractionIssueCode.TIMEZONE_CONFLICT,
         ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
@@ -427,6 +467,10 @@ async def request_review(
         resolved_at=runtime.context.clock.now(),
     )
     reviewed_reasons = [*state.get("reviewed_reasons", []), request.reason]
+    if request.reason == COMBINED_DATETIME_REASON:
+        reviewed_reasons.extend(["timezone_ambiguity", "datetime_unresolved"])
+    elif request.reason == COMBINED_DEADLINE_REASON:
+        reviewed_reasons.extend(["timezone_ambiguity", "deadline_unresolved"])
     update: dict[str, object] = {
         "current_stage": stage.value,
         "status": ProcessingRunStatus.RUNNING.value,
@@ -443,6 +487,15 @@ async def request_review(
         update["reviewed_timezone"] = (
             decision.override_value if decision.choice == "other" else decision.choice
         )
+        if (
+            request.reason in COMBINED_TIME_REASONS
+            and decision.clock_override is not None
+        ):
+            parsed = parse_review_datetime(decision.clock_override).isoformat()
+            if request.reason == COMBINED_DEADLINE_REASON:
+                update["reviewed_deadline"] = parsed
+            else:
+                update["reviewed_event_datetime"] = parsed
     elif request.review_type is ReviewType.DATETIME_CONFLICT:
         if decision.choice == "use_override" and decision.override_value is not None:
             parsed = parse_review_datetime(decision.override_value).isoformat()

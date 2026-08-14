@@ -36,7 +36,8 @@ The automated suite covers:
 - `Application.company_id` identity with unchanged `raw_company_name` evidence; and
 - Phase 3.5 migration preservation plus PostgreSQL repository lookups;
 - strict structured-output schema completeness without `company_id` or canonical company fields;
-- nine extraction contracts: assessment, interview, interview without timezone, relative datetime,
+- nine extraction contracts: assessment, interview, interview without timezone
+  (wall-clock extracted, timezone review only), relative datetime,
   reschedule, offer, rejection, general update and non-recruitment;
 - deterministic `VALID`, `NEEDS_REVIEW` and `INVALID` outcomes for confidence, timezone, evidence,
   action and opaque-link consistency;
@@ -47,7 +48,8 @@ The automated suite covers:
 - privacy-safe provider failures and representations; and
 - managed-identity Azure OpenAI deployment settings with no API key;
 - every Phase 5 route: happy path, unlikely prefilter, model irrelevance, invalid extraction,
-  timezone ambiguity, Application ambiguity, datetime override after timezone selection,
+  timezone confirmation of an extracted wall-clock, Application ambiguity,
+  datetime override only when the clock is still missing,
   and workflow-failure redirect with `error=EVENT_DATETIME_UNRESOLVED`;
 - invalid Review choice loops, typed resume, stable Review identity and optimistic idempotency;
 - graph reconstruction with the same checkpointer and processing-run/thread identity;

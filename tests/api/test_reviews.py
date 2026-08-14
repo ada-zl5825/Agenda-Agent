@@ -63,17 +63,22 @@ class Reviews:
         self.value = value
         self.resolutions: list[dict[str, object]] = []
         self.fail_with: Exception | None = None
+        self.next_review_id: UUID | None = None
 
     async def list_open(self, *, account_id: UUID) -> tuple[ReviewQueueItem, ...]:
         assert account_id == self.value.account_id
         return (
             ReviewQueueItem(
                 id=self.value.id,
+                source_email_id=self.value.source_email_id,
                 review_type=self.value.review_type,
                 reason=self.value.reason,
                 created_at=self.value.created_at,
                 company="Example",
                 role="Engineer",
+                subject="Interview invitation",
+                event_type="interview",
+                source_time_text="Friday at 10",
             ),
         )
 
@@ -86,6 +91,16 @@ class Reviews:
         if self.fail_with is not None:
             raise self.fail_with
         return self.value
+
+    async def next_open_for_source(
+        self,
+        *,
+        account_id: UUID,
+        source_email_id: UUID,
+        excluding_review_id: UUID,
+    ) -> UUID | None:
+        del account_id, source_email_id, excluding_review_id
+        return self.next_review_id
 
 
 @pytest.mark.asyncio
@@ -208,11 +223,13 @@ async def test_review_pages_require_session_and_post_requires_bound_csrf() -> No
     assert unauthenticated.status_code == 303
     assert unauthenticated.headers["location"].startswith("/auth/login?return_to=")
     assert page.status_code == 200
-    assert "Extracted event" in page.text
-    assert "Time evidence" in page.text
+    assert "抽出的事件" in page.text
+    assert "时间证据" in page.text
     assert "Field differences" in page.text
-    assert "Side-effect preview" in page.text
-    assert "Open original email" in page.text
+    assert "副作用预览" in page.text
+    assert "打开原邮件" in page.text
+    assert "确认时区" in page.text
+    assert "Example" in page.text
     assert "<script>" not in page.text
     assert "candidate@example.test" not in page.text
     assert "secret.example" not in page.text
@@ -220,6 +237,7 @@ async def test_review_pages_require_session_and_post_requires_bound_csrf() -> No
     assert "token=" not in page.text
     assert rejected.status_code == 403
     assert accepted.status_code == 303
+    assert accepted.headers["location"] == "/reviews"
     assert reviews.resolutions == [
         {
             "account_id": account_id,
@@ -227,5 +245,49 @@ async def test_review_pages_require_session_and_post_requires_bound_csrf() -> No
             "choice": "Europe/London",
             "override_value": None,
             "expected_version": 1,
+            "clock_override": None,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_resolve_continues_to_the_next_review_for_the_same_email() -> None:
+    account_id = uuid4()
+    review_id = uuid4()
+    next_id = uuid4()
+    manager = WebSessionManager(key=b"s" * 32, clock=Clock())
+    reviews = Reviews(detail(account_id, review_id))
+    reviews.next_review_id = next_id
+    application = create_app()
+    application.dependency_overrides[get_web_session_manager] = lambda: manager
+    application.dependency_overrides[get_review_service] = lambda: reviews
+    transport = httpx.ASGITransport(app=application)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://agent.example",
+        follow_redirects=False,
+    ) as client:
+        session = manager.issue(
+            account_id,
+            admin_home_account_id="admin-account",
+            admin_tenant_id=None,
+        )
+        client.cookies.set(manager.cookie_name, session)
+        queue = await client.get("/reviews")
+        csrf = manager.csrf_token(
+            session_token=session,
+            review_id=review_id,
+            version=1,
+        )
+        response = await client.post(
+            f"/reviews/{review_id}/resolve",
+            content=("choice=Europe%2FLondon&expected_version=1&csrf_token=" + csrf),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    assert "Example · Engineer" in queue.text
+    assert "确认时区" in queue.text
+    assert "TIMEZONE_AMBIGUITY" not in queue.text
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/reviews/{next_id}"

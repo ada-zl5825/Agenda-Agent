@@ -44,6 +44,18 @@ class ReviewService:
             raise ReviewAccessDeniedError("review belongs to another account")
         return detail
 
+    async def next_open_for_source(
+        self,
+        *,
+        account_id: UUID,
+        source_email_id: UUID,
+        excluding_review_id: UUID,
+    ) -> UUID | None:
+        for item in await self.list_open(account_id=account_id):
+            if item.source_email_id == source_email_id and item.id != excluding_review_id:
+                return item.id
+        return None
+
     async def resolve(
         self,
         *,
@@ -52,6 +64,7 @@ class ReviewService:
         choice: str,
         override_value: str | None,
         expected_version: int,
+        clock_override: str | None = None,
     ) -> ReviewDetail:
         detail = await self.get_detail(account_id=account_id, review_id=review_id)
         if detail.status != "open" or detail.version != expected_version:
@@ -66,6 +79,7 @@ class ReviewService:
             decision = ReviewDecision(
                 choice=choice,
                 override_value=override_value,
+                clock_override=clock_override,
                 expected_version=expected_version,
             )
             from recruitment_agent.graph.contracts import validate_review_decision

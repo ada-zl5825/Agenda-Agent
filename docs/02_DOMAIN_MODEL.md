@@ -104,7 +104,8 @@ Application transitions are monotonic for ordinary progress, preserve withdrawn 
 do not let assessment/interview evidence downgrade offer or rejection states. Every actual status
 change records `application_status_history`. Assessment/interview actions keep only an encrypted
 `secure_link_id`; graph state and transition plans contain the opaque link reference. Evidence with
-an unresolved required datetime or timezone produces a zero-mutation plan.
+an unresolved required datetime or timezone produces a zero-mutation plan. A named
+wall-clock without a timezone is extracted; only the timezone waits for review.
 
 ## Phase 7 Calendar synchronization
 

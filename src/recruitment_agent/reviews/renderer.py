@@ -7,29 +7,29 @@ from urllib.parse import urlsplit
 
 from recruitment_agent.privacy.sanitizer import PrivacySanitizer
 from recruitment_agent.reviews.models import ReviewDetail, ReviewQueueItem
+from recruitment_agent.reviews.presentation import (
+    choice_label,
+    clock_field_copy,
+    clock_kind,
+    event_type_label,
+    headline_from_mappings,
+    review_action_label,
+    review_headline,
+)
 
 _SUBJECT_SANITIZER = PrivacySanitizer()
 
 
 class ReviewHtmlRenderer:
     def queue(self, items: tuple[ReviewQueueItem, ...]) -> str:
-        cards = "".join(
-            (
-                '<article class="card">'
-                f'<a href="/reviews/{item.id}"><strong>{escape(item.review_type)}</strong></a>'
-                f"<p>{self._optional_text(item.company)} &middot; "
-                f"{self._optional_text(item.role)}</p>"
-                f"<p>{escape(item.reason)} &middot; "
-                f"{escape(item.created_at.isoformat())}</p>"
-                "</article>"
-            )
-            for item in items
-        ) or "<p>No open reviews.</p>"
+        cards = "".join(self._queue_card(item) for item in items) or (
+            "<p>当前没有待确认的邮件。</p>"
+        )
         return self._page(
-            "Reviews",
-            '<nav><a href="/agent">Agent console</a> &middot; '
-            '<a href="/brief/today">Today\'s Brief</a></nav>'
-            f"<h1>Reviews</h1>{cards}",
+            "待确认",
+            '<nav><a href="/agent">控制台</a> &middot; '
+            '<a href="/brief/today">今日 Brief</a></nav>'
+            f"<h1>待确认</h1>{cards}",
         )
 
     def detail(
@@ -40,14 +40,19 @@ class ReviewHtmlRenderer:
         error: str | None = None,
     ) -> str:
         age = self._age(detail.created_at, detail.resolved_at or datetime.now(UTC))
+        headline = headline_from_mappings(
+            application=detail.application,
+            extraction=detail.extraction,
+            source=detail.source,
+        )
+        action = review_action_label(detail.review_type, detail.reason)
         header = self._table(
             {
-                "review_id": str(detail.id),
-                "review_type": detail.review_type,
-                "status": detail.status,
-                "reason_code": detail.reason,
-                "created_at": detail.created_at,
-                "pending_age": age,
+                "需要确认": action,
+                "状态": detail.status,
+                "等待时长": age,
+                "内部类型": detail.review_type,
+                "原因码": detail.reason,
             }
         )
         source_values = dict(detail.source)
@@ -113,51 +118,88 @@ class ReviewHtmlRenderer:
             }
         )
         banner = (
-            f'<p class="error">Workflow failed: {escape(error)}</p>'
+            f'<p class="error">处理失败: {escape(error)}</p>'
             if error
             else ""
         )
         content = (
-            '<nav><a href="/agent">Agent console</a> &middot; '
-            '<a href="/reviews">&larr; Reviews</a></nav><h1>Review detail</h1>'
+            '<nav><a href="/agent">控制台</a> &middot; '
+            '<a href="/reviews">&larr; 待确认</a></nav>'
+            f"<h1>{escape(headline)}</h1>"
+            f'<p class="lead">{escape(action)}</p>'
             + banner
-            + self._section("Header", header)
-            + self._section("Source email", source)
-            + self._section("Application", application)
-            + self._section("Extracted event", extracted)
-            + self._section("Time evidence", time_evidence)
-            + self._section("Other confidence and validator findings", confidence)
-            + self._section("Existing vs proposed", diff)
-            + self._section("Candidate matches", candidates or "<p>&#26410;&#25552;&#20379;</p>")
-            + self._section("Secure links", links or "<p>&#26410;&#25552;&#20379;</p>")
-            + self._section("Side-effect preview", effects)
-            + self._section("Decision", decision)
-            + self._section("Resolution audit", audit)
+            + self._section("本次要确认什么", header)
+            + self._section("来源邮件", source)
+            + self._section("申请", application)
+            + self._section("抽出的事件", extracted)
+            + self._section("时间证据", time_evidence)
+            + self._section("其他置信度与校验", confidence)
+            + self._section("现有记录 vs 建议", diff)
+            + self._section("候选匹配", candidates or "<p>未提供</p>")
+            + self._section("安全链接", links or "<p>未提供</p>")
+            + self._section("副作用预览", effects)
+            + self._section("决定", decision)
+            + self._section("处理记录", audit)
         )
-        return self._page(f"Review {detail.id}", content)
+        return self._page(headline, content)
+
+    def _queue_card(self, item: ReviewQueueItem) -> str:
+        headline = review_headline(
+            company=item.company,
+            role=item.role,
+            subject=item.subject,
+        )
+        action = review_action_label(item.review_type, item.reason)
+        event = event_type_label(item.event_type)
+        bits = [action]
+        if event:
+            bits.append(event)
+        if item.source_time_text:
+            bits.append(item.source_time_text)
+        return (
+            '<article class="card">'
+            f'<a href="/reviews/{item.id}"><strong>{escape(headline)}</strong></a>'
+            f"<p>{escape(' · '.join(bits))}</p>"
+            f'<p class="meta">{escape(self._age(item.created_at, datetime.now(UTC)))}</p>'
+            "</article>"
+        )
 
     def _decision(self, detail: ReviewDetail, csrf_token: str) -> str:
         if detail.status != "open":
-            return "<p>This review is resolved and read-only.</p>"
+            return "<p>这条已经确认, 只读.</p>"
         choices = "".join(
             '<label class="choice">'
             f'<input type="radio" name="choice" value="{escape(choice, quote=True)}" required>'
-            f" {escape(choice)}</label>"
+            f" {escape(choice_label(choice, detail.candidates))}</label>"
             for choice in detail.allowed_choices
         )
-        override = (
-            '<label>Typed override <input name="override_value" autocomplete="off" '
-            'placeholder="YYYY-MM-DD HH:MM or IANA timezone"></label>'
-            if {"other", "use_override"} & set(detail.allowed_choices)
-            else ""
-        )
+        extras = ""
+        if "other" in detail.allowed_choices:
+            extras += (
+                '<label>其他时区 <input name="override_value" autocomplete="off" '
+                'placeholder="例如 Asia/Shanghai"></label>'
+            )
+        kind = clock_kind(detail.reason)
+        if kind is not None or "use_override" in detail.allowed_choices:
+            label, hint = clock_field_copy(detail.reason)
+            field_name = "override_value"
+            if kind is not None and "use_override" not in detail.allowed_choices:
+                field_name = "clock_override"
+            if "other" in detail.allowed_choices:
+                field_name = "clock_override"
+            extras += (
+                f"<label>{escape(label)} "
+                f'<input name="{field_name}" autocomplete="off" '
+                'placeholder="YYYY-MM-DD HH:MM"></label>'
+                f'<p class="hint">{escape(hint)}</p>'
+            )
         return (
             f"<p>{escape(detail.question)}</p>"
             f'<form method="post" action="/reviews/{detail.id}/resolve">'
             f'<input type="hidden" name="csrf_token" '
             f'value="{escape(csrf_token, quote=True)}">'
             f'<input type="hidden" name="expected_version" value="{detail.version}">'
-            f'{choices}{override}<button type="submit">Resolve</button></form>'
+            f"{choices}{extras}<button type=\"submit\">确认并继续</button></form>"
         )
 
     def _table(
@@ -171,7 +213,7 @@ class ReviewHtmlRenderer:
         for key, raw in values.items():
             rendered = self._value(raw)
             if key in urls and isinstance(raw, str) and self._safe_url(raw):
-                rendered = f'<a href="{escape(raw, quote=True)}">Open original email</a>'
+                rendered = f'<a href="{escape(raw, quote=True)}">打开原邮件</a>'
             rows.append(f"<tr><th>{escape(key)}</th><td>{rendered}</td></tr>")
         return '<table class="data">' + "".join(rows) + "</table>"
 
@@ -203,14 +245,10 @@ class ReviewHtmlRenderer:
     @staticmethod
     def _value(value: object) -> str:
         if value is None or value == "" or value == [] or value == {}:
-            return "&#26410;&#25552;&#20379;"
+            return "未提供"
         if isinstance(value, dict):
             return escape(", ".join(f"{key}={val}" for key, val in value.items()))
         return escape(str(value))
-
-    @staticmethod
-    def _optional_text(value: str | None) -> str:
-        return escape(value) if value else "&#26410;&#25552;&#20379;"
 
     @staticmethod
     def _safe_url(value: str) -> bool:
@@ -246,6 +284,9 @@ class ReviewHtmlRenderer:
             ".choice{display:block;padding:8px}button{margin-top:12px;"
             "padding:10px 18px}.error{color:#991b1b;background:#fef2f2;"
             "border:1px solid #fecaca;border-radius:8px;padding:10px 12px}"
+            ".lead{color:#374151;font-size:1.05rem}.meta,.hint{color:#6b7280}"
+            "label{display:block;margin:12px 0 6px}input[type=text],input:not([type]){"
+            "width:min(360px,100%);padding:8px}"
             "</style></head><body>"
             f"{content}</body></html>"
         )
