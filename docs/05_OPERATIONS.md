@@ -206,7 +206,10 @@ database-created/queue-send failure window. A once-per-minute dispatcher re-enqu
 still marked `queued` or holding an expired worker lease, so an HTTP disconnect, worker crash, or
 Storage transient cannot strand accepted work.
 Batch processing creates deterministic child operations, and each source email is claimed
-atomically before its workflow begins.
+atomically before its workflow begins. After each mail-sync timer tick, if workflow processing
+is enabled and any `pending` or orphaned `needs_review` mail remains, the same timer submits one
+`process-pending` drain (20 emails per batch, repeating until the waiting list is empty). The
+console button still does the same drain on demand. Turn the workflow switch off to pause both.
 
 Runtime changes use optimistic concurrency: read the current `version`, then send it as
 `expected_version` with a required reason (`manual`, `testing`, `maintenance`, `incident`, or

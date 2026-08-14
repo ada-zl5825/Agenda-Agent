@@ -76,7 +76,9 @@ The production composition functions `run_mail_processing_job` and
 `resume_mail_processing_job` reconstruct all adapters and the graph around the same PostgreSQL
 checkpointer. Phase 6 composition also supplies the atomic PostgreSQL domain store. Phase 8 exposes
 the authenticated graphical Review page. Phase 9A `process-pending` selects pending source emails
-and fans them out as child operations.
+and fans them out as child operations. One operation keeps taking bounded batches until no
+drainable mail remains, skipping emails that already have a queued or running `process_email`.
+The mail-sync timer submits that drain automatically when the workflow switch is on.
 
 ## Successor reviews and orphan recovery
 

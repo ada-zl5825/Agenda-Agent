@@ -14,6 +14,7 @@ from recruitment_agent.application.errors import (
     OperationsAuthenticationError,
 )
 from recruitment_agent.application.operations import (
+    SCHEDULED_PENDING_BATCH_LIMIT,
     ControlReason,
     OperationCreate,
     OperationExecutor,
@@ -25,6 +26,7 @@ from recruitment_agent.application.operations import (
     RuntimeControl,
     RuntimeControlDefaults,
     RuntimeControlPatch,
+    scheduled_pending_drain_slot,
 )
 from recruitment_agent.operations.security import OperationsTokenAuthenticator
 
@@ -54,6 +56,8 @@ class ControlStore:
         self.completed: list[tuple[UUID, dict[str, str | int | bool | None]]] = []
         self.released: list[UUID] = []
         self.cursor_resets = 0
+        self.pending_ids: list[UUID] = []
+        self.orphan_ids: list[UUID] = []
 
     async def ensure_control(self, **_kwargs: object) -> RuntimeControl:
         return self.control
@@ -173,6 +177,60 @@ class ControlStore:
     async def reset_mail_cursor(self, **_kwargs: object) -> bool:
         self.cursor_resets += 1
         return True
+
+    def _available_pending(self) -> list[UUID]:
+        busy = {
+            operation.source_email_id
+            for operation in self.operations.values()
+            if operation.operation_type is OperationType.PROCESS_EMAIL
+            and operation.status in {OperationStatus.QUEUED, OperationStatus.RUNNING}
+            and operation.source_email_id is not None
+        }
+        return [item for item in self.pending_ids if item not in busy]
+
+    async def has_drainable_source_emails(self, *, account_id: UUID) -> bool:
+        del account_id
+        return bool(self.orphan_ids or self._available_pending())
+
+    async def list_pending_source_email_ids(
+        self,
+        *,
+        account_id: UUID,
+        limit: int,
+    ) -> tuple[UUID, ...]:
+        del account_id
+        return tuple(self._available_pending()[:limit])
+
+    async def list_orphaned_needs_review_ids(
+        self,
+        *,
+        account_id: UUID,
+        limit: int,
+    ) -> tuple[UUID, ...]:
+        del account_id
+        return tuple(self.orphan_ids[:limit])
+
+    async def reclaim_orphaned_needs_review(
+        self,
+        *,
+        account_id: UUID,
+        source_email_id: UUID,
+        now: datetime,
+    ) -> bool:
+        del account_id, now
+        if source_email_id not in self.orphan_ids:
+            return False
+        self.orphan_ids.remove(source_email_id)
+        if source_email_id not in self.pending_ids:
+            self.pending_ids.append(source_email_id)
+        return True
+
+    async def count_child_operations(self, *, parent_operation_id: UUID) -> int:
+        return sum(
+            1
+            for operation in self.operations.values()
+            if operation.parent_operation_id == parent_operation_id
+        )
 
 
 def runtime_control(**changes: bool | str | None) -> RuntimeControl:
@@ -381,6 +439,161 @@ async def test_dispatch_job_executes_due_operations_as_a_queue_scale_fallback(
 
     assert dispatched == 2
     assert executed == [first, second]
+
+
+def _workflow_executor(store: ControlStore, queue: RecordingQueue) -> OperationExecutor:
+    return OperationExecutor(
+        store=store,  # type: ignore[arg-type]
+        queue=queue,
+        handlers=object(),  # type: ignore[arg-type]
+        clock=FixedClock(),
+        account_id=ACCOUNT_ID,
+        folder_id="inbox",
+        defaults=RuntimeControlDefaults(
+            mail_sync_enabled=False,
+            workflow_enabled=True,
+            calendar_write_enabled=False,
+            daily_brief_enabled=False,
+            daily_brief_recipient="brief@example.test",
+        ),
+        capabilities=RuntimeCapabilities(
+            workflow_processing_available=True,
+            calendar_write_available=True,
+            daily_brief_available=True,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_pending_drains_every_waiting_email_in_batches() -> None:
+    store = ControlStore(runtime_control(workflow_enabled=True))
+    store.pending_ids = [uuid4() for _ in range(45)]
+    operation, _ = await store.create_operation(
+        request=OperationCreate(
+            account_id=ACCOUNT_ID,
+            operation_type=OperationType.PROCESS_PENDING,
+            idempotency_key_hash="c" * 64,
+            batch_limit=20,
+        ),
+        requested_at=NOW,
+    )
+    queue = RecordingQueue()
+
+    await _workflow_executor(store, queue).execute(operation.id)
+
+    children = [
+        item
+        for item in store.operations.values()
+        if item.operation_type is OperationType.PROCESS_EMAIL
+    ]
+    assert len(children) == 45
+    assert len(queue.ids) == 45
+    assert store.completed == [
+        (operation.id, {"queued": 45, "already_queued": 0, "continued": False})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_process_pending_skips_emails_already_queued_for_processing() -> None:
+    store = ControlStore(runtime_control(workflow_enabled=True))
+    waiting = uuid4()
+    already = uuid4()
+    store.pending_ids = [already, waiting]
+    await store.create_operation(
+        request=OperationCreate(
+            account_id=ACCOUNT_ID,
+            operation_type=OperationType.PROCESS_EMAIL,
+            idempotency_key_hash="d" * 64,
+            source_email_id=already,
+        ),
+        requested_at=NOW,
+    )
+    operation, _ = await store.create_operation(
+        request=OperationCreate(
+            account_id=ACCOUNT_ID,
+            operation_type=OperationType.PROCESS_PENDING,
+            idempotency_key_hash="e" * 64,
+            batch_limit=20,
+        ),
+        requested_at=NOW,
+    )
+    queue = RecordingQueue()
+
+    await _workflow_executor(store, queue).execute(operation.id)
+
+    queued_children = [
+        item
+        for item in store.operations.values()
+        if item.parent_operation_id == operation.id
+    ]
+    assert [item.source_email_id for item in queued_children] == [waiting]
+    assert queue.ids == [queued_children[0].id]
+
+
+@pytest.mark.asyncio
+async def test_scheduled_pending_drain_submits_once_per_ten_minute_slot() -> None:
+    store = ControlStore(runtime_control(workflow_enabled=True))
+    store.pending_ids = [uuid4()]
+    queue = RecordingQueue()
+    control = service(store, queue)
+
+    first = await control.submit_scheduled_pending_drain()
+    second = await control.submit_scheduled_pending_drain()
+
+    assert first is not None
+    assert second is not None
+    assert first.id == second.id
+    assert first.batch_limit == SCHEDULED_PENDING_BATCH_LIMIT
+    assert store.by_key[
+        (
+            OperationType.PROCESS_PENDING,
+            control.hash_idempotency_key(f"auto-drain-{scheduled_pending_drain_slot(NOW)}"),
+        )
+    ] == first.id
+    assert queue.ids == [first.id, first.id]
+
+
+@pytest.mark.asyncio
+async def test_scheduled_pending_drain_stays_idle_when_workflow_is_paused() -> None:
+    store = ControlStore(runtime_control(workflow_enabled=False))
+    store.pending_ids = [uuid4()]
+    queue = RecordingQueue()
+
+    assert await service(store, queue).submit_scheduled_pending_drain() is None
+    assert queue.ids == []
+
+
+@pytest.mark.asyncio
+async def test_process_pending_enqueues_a_continuation_after_the_batch_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "recruitment_agent.application.operations.PENDING_DRAIN_MAX_BATCHES",
+        2,
+    )
+    store = ControlStore(runtime_control(workflow_enabled=True))
+    store.pending_ids = [uuid4() for _ in range(10)]
+    operation, _ = await store.create_operation(
+        request=OperationCreate(
+            account_id=ACCOUNT_ID,
+            operation_type=OperationType.PROCESS_PENDING,
+            idempotency_key_hash="f" * 64,
+            batch_limit=2,
+        ),
+        requested_at=NOW,
+    )
+    queue = RecordingQueue()
+
+    await _workflow_executor(store, queue).execute(operation.id)
+
+    continuations = [
+        item
+        for item in store.operations.values()
+        if item.operation_type is OperationType.PROCESS_PENDING and item.id != operation.id
+    ]
+    assert len(continuations) == 1
+    assert store.completed[0][1]["continued"] is True
+    assert store.completed[0][1]["queued"] == 4
 
 
 def test_operations_token_is_constant_contract_and_routes_are_exposed() -> None:

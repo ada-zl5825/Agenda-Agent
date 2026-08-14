@@ -27,6 +27,7 @@ Recruitment Inbox Agent
 - 维护 Application 状态、招聘事件和待办，避免重试写出重复记录
 - 在 Outlook 日历写入面试 / 测评截止（可关闭）
 - 每天发送 Daily Brief；控制台提供 Review 队列和运行开关
+- 邮件同步后自动按批处理待办，直到没有可处理邮件（工作流开关关闭则停）
 
 ## 不做什么
 

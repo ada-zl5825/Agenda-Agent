@@ -47,6 +47,17 @@ class OperationStatus(StrEnum):
     FAILED = "failed"
 
 
+SCHEDULED_PENDING_BATCH_LIMIT = 20
+PENDING_DRAIN_MAX_BATCHES = 50
+
+
+def scheduled_pending_drain_slot(now: datetime) -> str:
+    """Stable 10-minute UTC slot used as the scheduled drain idempotency key."""
+    require_aware(now, field_name="now")
+    aligned = now.replace(minute=(now.minute // 10) * 10, second=0, microsecond=0)
+    return aligned.strftime("%Y%m%d%H%M")
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RuntimeControlDefaults:
     mail_sync_enabled: bool
@@ -325,6 +336,8 @@ class OperationsStore(Protocol):
 
     async def count_child_operations(self, *, parent_operation_id: UUID) -> int: ...
 
+    async def has_drainable_source_emails(self, *, account_id: UUID) -> bool: ...
+
 
 class OperationQueue(Protocol):
     async def enqueue(self, *, operation_id: UUID) -> None: ...
@@ -478,6 +491,22 @@ class OperationsControlService:
             await self._queue.enqueue(operation_id=operation_id)
         return operation_ids
 
+    async def submit_scheduled_pending_drain(self) -> OperationSnapshot | None:
+        """Queue one bounded drain when workflow is on and mail is waiting."""
+        if not self._capabilities.workflow_processing_available:
+            return None
+        control = await self.get_control()
+        if not control.workflow_enabled:
+            return None
+        if not await self._store.has_drainable_source_emails(account_id=self._account_id):
+            return None
+        slot = scheduled_pending_drain_slot(self._clock.now())
+        return await self.submit(
+            operation_type=OperationType.PROCESS_PENDING,
+            idempotency_key=f"auto-drain-{slot}",
+            batch_limit=SCHEDULED_PENDING_BATCH_LIMIT,
+        )
+
     @staticmethod
     def hash_idempotency_key(value: str) -> str:
         normalized = value.strip()
@@ -627,10 +656,31 @@ class OperationExecutor:
         existing = await self._store.count_child_operations(
             parent_operation_id=operation.id
         )
-        remaining = max(0, operation.batch_limit - existing)
+        queued = 0
+        batches = 0
+        while batches < PENDING_DRAIN_MAX_BATCHES:
+            source_ids = await self._next_pending_batch(operation.batch_limit)
+            if not source_ids:
+                break
+            queued += await self._enqueue_process_email_children(operation, source_ids)
+            batches += 1
+            if len(source_ids) < operation.batch_limit:
+                break
+        continued = False
+        if batches >= PENDING_DRAIN_MAX_BATCHES and await self._store.has_drainable_source_emails(
+            account_id=self._account_id
+        ):
+            continued = await self._enqueue_pending_continuation(operation)
+        return {
+            "queued": queued,
+            "already_queued": existing,
+            "continued": continued,
+        }
+
+    async def _next_pending_batch(self, limit: int) -> tuple[UUID, ...]:
         orphans = await self._store.list_orphaned_needs_review_ids(
             account_id=self._account_id,
-            limit=remaining,
+            limit=limit,
         )
         for source_email_id in orphans:
             await self._store.reclaim_orphaned_needs_review(
@@ -638,10 +688,16 @@ class OperationExecutor:
                 source_email_id=source_email_id,
                 now=self._clock.now(),
             )
-        source_ids = await self._store.list_pending_source_email_ids(
+        return await self._store.list_pending_source_email_ids(
             account_id=self._account_id,
-            limit=remaining,
+            limit=limit,
         )
+
+    async def _enqueue_process_email_children(
+        self,
+        operation: OperationSnapshot,
+        source_ids: tuple[UUID, ...],
+    ) -> int:
         queued = 0
         for source_email_id in source_ids:
             key_hash = hashlib.sha256(
@@ -660,7 +716,24 @@ class OperationExecutor:
             if child.status is OperationStatus.QUEUED:
                 await self._queue.enqueue(operation_id=child.id)
                 queued += 1
-        return {"queued": queued, "already_queued": existing}
+        return queued
+
+    async def _enqueue_pending_continuation(self, operation: OperationSnapshot) -> bool:
+        assert operation.batch_limit is not None
+        continuation, created = await self._store.create_operation(
+            request=OperationCreate(
+                account_id=self._account_id,
+                operation_type=OperationType.PROCESS_PENDING,
+                idempotency_key_hash=OperationsControlService.hash_idempotency_key(
+                    f"continue-{operation.id}"
+                ),
+                batch_limit=operation.batch_limit,
+            ),
+            requested_at=self._clock.now(),
+        )
+        if continuation.status is OperationStatus.QUEUED:
+            await self._queue.enqueue(operation_id=continuation.id)
+        return created or continuation.status is OperationStatus.QUEUED
 
     async def _process_email(
         self,
