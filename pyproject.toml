@@ -11,6 +11,7 @@ requires-python = ">=3.12,<3.14"
 license = { text = "Proprietary" }
 authors = [{ name = "Theo" }]
 dependencies = [
+  "aiohttp>=3.12,<4",
   "alembic>=1.16,<2",
   "azure-functions>=1.23,<2",
   "azure-identity>=1.25,<2",
