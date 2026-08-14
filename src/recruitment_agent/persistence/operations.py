@@ -96,16 +96,56 @@ class SqlAlchemyOperationsStore:
                 )
                 .on_conflict_do_nothing(index_elements=["account_id"])
             )
-            model = await session.get(RuntimeControlModel, account_id)
-            if model is None:
+            # Read scalar columns eagerly so mapping cannot trigger implicit ORM I/O,
+            # which raises MissingGreenlet in Azure Functions cold-start timers.
+            row = (
+                await session.execute(
+                    select(
+                        RuntimeControlModel.account_id,
+                        RuntimeControlModel.mail_sync_enabled,
+                        RuntimeControlModel.workflow_enabled,
+                        RuntimeControlModel.calendar_write_enabled,
+                        RuntimeControlModel.daily_brief_enabled,
+                        RuntimeControlModel.daily_brief_recipient,
+                        RuntimeControlModel.version,
+                        RuntimeControlModel.reason,
+                        RuntimeControlModel.updated_by,
+                        RuntimeControlModel.updated_at,
+                    ).where(RuntimeControlModel.account_id == account_id)
+                )
+            ).one_or_none()
+            if row is None:
                 raise RuntimeError("runtime control could not be initialized")
-            if (
-                model.daily_brief_recipient is None
-                and defaults.daily_brief_recipient is not None
-            ):
-                model.daily_brief_recipient = defaults.daily_brief_recipient
-                await session.flush()
-            return self._to_control(model)
+            if row.daily_brief_recipient is None and defaults.daily_brief_recipient is not None:
+                await session.execute(
+                    update(RuntimeControlModel)
+                    .where(RuntimeControlModel.account_id == account_id)
+                    .values(daily_brief_recipient=defaults.daily_brief_recipient)
+                )
+                return RuntimeControl(
+                    account_id=row.account_id,
+                    mail_sync_enabled=row.mail_sync_enabled,
+                    workflow_enabled=row.workflow_enabled,
+                    calendar_write_enabled=row.calendar_write_enabled,
+                    daily_brief_enabled=row.daily_brief_enabled,
+                    daily_brief_recipient=defaults.daily_brief_recipient,
+                    version=row.version,
+                    reason=ControlReason(row.reason),
+                    updated_by=row.updated_by,
+                    updated_at=row.updated_at,
+                )
+            return RuntimeControl(
+                account_id=row.account_id,
+                mail_sync_enabled=row.mail_sync_enabled,
+                workflow_enabled=row.workflow_enabled,
+                calendar_write_enabled=row.calendar_write_enabled,
+                daily_brief_enabled=row.daily_brief_enabled,
+                daily_brief_recipient=row.daily_brief_recipient,
+                version=row.version,
+                reason=ControlReason(row.reason),
+                updated_by=row.updated_by,
+                updated_at=row.updated_at,
+            )
 
     async def update_control(
         self,
