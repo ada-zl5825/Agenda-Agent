@@ -1,10 +1,12 @@
 """Account-scoped PostgreSQL read models for graphical Review pages."""
 
+from datetime import datetime
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.expression import Executable
 
 from recruitment_agent.application.reviews import ReviewStore
 from recruitment_agent.persistence.models import (
@@ -56,6 +58,7 @@ class SqlAlchemyReviewStore(ReviewStore):
         )
         async with self._session_factory() as session:
             rows = (await session.execute(statement)).all()
+            orphan_rows = (await session.execute(self._orphan_statement(account_id))).all()
         items: list[ReviewQueueItem] = []
         for (
             review,
@@ -65,36 +68,123 @@ class SqlAlchemyReviewStore(ReviewStore):
             display_name,
             extraction,
         ) in rows:
-            payload = extraction if isinstance(extraction, dict) else {}
-            company_raw = payload.get("company_raw")
-            role_raw = payload.get("role_raw")
             items.append(
-                ReviewQueueItem(
-                    id=review.id,
-                    source_email_id=source.id,
+                self._queue_item(
+                    review_id=review.id,
+                    source=source,
+                    role_name=role_name,
+                    raw_company_name=raw_company_name,
+                    display_name=display_name,
+                    extraction=extraction,
                     review_type=review.review_type,
                     reason=review.reason,
                     created_at=review.created_at,
-                    company=display_name
-                    or raw_company_name
-                    or (company_raw if isinstance(company_raw, str) else None),
-                    role=role_name or (role_raw if isinstance(role_raw, str) else None),
-                    subject=_SUBJECT_SANITIZER.sanitize(source.subject).text,
-                    event_type=(
-                        payload.get("event_type")
-                        if isinstance(payload.get("event_type"), str)
-                        else None
-                    ),
-                    source_time_text=(
-                        payload.get("source_datetime_text")
-                        if isinstance(payload.get("source_datetime_text"), str)
-                        else payload.get("source_deadline_text")
-                        if isinstance(payload.get("source_deadline_text"), str)
-                        else None
-                    ),
+                    orphaned=False,
+                )
+            )
+        seen = {item.source_email_id for item in items}
+        for (
+            source,
+            role_name,
+            raw_company_name,
+            display_name,
+            extraction,
+            run,
+        ) in orphan_rows:
+            if source.id in seen:
+                continue
+            items.append(
+                self._queue_item(
+                    review_id=run.id,
+                    source=source,
+                    role_name=role_name,
+                    raw_company_name=raw_company_name,
+                    display_name=display_name,
+                    extraction=extraction,
+                    review_type="ORPHANED_NEEDS_REVIEW",
+                    reason="orphaned_needs_review",
+                    created_at=run.started_at,
+                    orphaned=True,
                 )
             )
         return tuple(items)
+
+    @staticmethod
+    def _orphan_statement(account_id: UUID) -> Executable:
+        open_review = exists(
+            select(ReviewItemModel.id).where(
+                ReviewItemModel.processing_run_id == ProcessingRunModel.id,
+                ReviewItemModel.status == "open",
+            )
+        )
+        return (
+            select(
+                SourceEmailModel,
+                ApplicationModel.role_name,
+                ApplicationModel.raw_company_name,
+                CompanyModel.display_name,
+                LlmExtractionModel.extraction,
+                ProcessingRunModel,
+            )
+            .join(
+                ProcessingRunModel,
+                ProcessingRunModel.source_email_id == SourceEmailModel.id,
+            )
+            .outerjoin(ApplicationModel, ApplicationModel.id == SourceEmailModel.application_id)
+            .outerjoin(CompanyModel, CompanyModel.id == ApplicationModel.company_id)
+            .outerjoin(
+                LlmExtractionModel,
+                LlmExtractionModel.processing_run_id == ProcessingRunModel.id,
+            )
+            .where(
+                SourceEmailModel.account_id == account_id,
+                SourceEmailModel.processing_status == "needs_review",
+                ProcessingRunModel.status == "needs_review",
+                ~open_review,
+            )
+            .order_by(ProcessingRunModel.started_at)
+        )
+
+    @staticmethod
+    def _queue_item(
+        *,
+        review_id: UUID,
+        source: SourceEmailModel,
+        role_name: str | None,
+        raw_company_name: str | None,
+        display_name: str | None,
+        extraction: object,
+        review_type: str,
+        reason: str,
+        created_at: datetime,
+        orphaned: bool,
+    ) -> ReviewQueueItem:
+        payload = extraction if isinstance(extraction, dict) else {}
+        company_raw = payload.get("company_raw")
+        role_raw = payload.get("role_raw")
+        return ReviewQueueItem(
+            id=review_id,
+            source_email_id=source.id,
+            review_type=review_type,
+            reason=reason,
+            created_at=created_at,
+            company=display_name
+            or raw_company_name
+            or (company_raw if isinstance(company_raw, str) else None),
+            role=role_name or (role_raw if isinstance(role_raw, str) else None),
+            subject=_SUBJECT_SANITIZER.sanitize(source.subject).text,
+            event_type=(
+                payload.get("event_type") if isinstance(payload.get("event_type"), str) else None
+            ),
+            source_time_text=(
+                payload.get("source_datetime_text")
+                if isinstance(payload.get("source_datetime_text"), str)
+                else payload.get("source_deadline_text")
+                if isinstance(payload.get("source_deadline_text"), str)
+                else None
+            ),
+            orphaned=orphaned,
+        )
 
     async def get_detail(
         self,

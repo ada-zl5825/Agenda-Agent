@@ -1,6 +1,7 @@
 """Branch, interrupt, resume, retry, and privacy tests for Phase 5."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -50,6 +51,7 @@ from recruitment_agent.graph.contracts import (
     WorkflowPrefilterDecision,
     WorkflowSourceEmail,
     WorkflowStage,
+    successor_review_id,
 )
 from recruitment_agent.graph.ports import CalendarSync, NoOpCalendarSync
 from recruitment_agent.graph.runner import RecruitmentWorkflowRunner, WorkflowStartRequest
@@ -178,8 +180,16 @@ class FakeWorkflowPersistence:
     ) -> WorkflowExtractionResult:
         return self.extractions.setdefault(audit.processing_run_id, audit.result)
 
-    async def open_review(self, item: ReviewItem) -> None:
-        self.reviews.setdefault(item.id, item)
+    async def open_review(self, item: ReviewItem) -> ReviewItem:
+        existing = self.reviews.get(item.id)
+        if existing is not None and existing.status is ReviewStatus.RESOLVED:
+            nxt = replace(
+                item,
+                id=successor_review_id(existing.id, existing.version),
+            )
+            self.reviews[nxt.id] = nxt
+            return nxt
+        return self.reviews.setdefault(item.id, item)
 
     async def resolve_review(
         self,
@@ -193,6 +203,13 @@ class FakeWorkflowPersistence:
         if existing is not None and existing != decision:
             raise ValueError("review resolution conflict")
         self.resolutions[review_id] = decision
+        item = self.reviews.get(review_id)
+        if item is not None:
+            self.reviews[review_id] = replace(
+                item,
+                status=ReviewStatus.RESOLVED,
+                version=item.version + 1,
+            )
 
     async def finalize_run(
         self,
@@ -864,3 +881,31 @@ def test_review_item_identity_is_stable_and_contains_no_checkpoint_payload() -> 
     assert review_request.id == repeated.id
     assert review_request.status is ReviewStatus.OPEN
     assert "checkpoint" not in review_request.request.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_open_review_after_resolve_creates_a_successor_row() -> None:
+    persistence = FakeWorkflowPersistence()
+    item = ReviewItem.create(
+        processing_run_id=RUN_ID,
+        request=ReviewRequest(
+            review_type=ReviewType.TIMEZONE_AMBIGUITY,
+            reason="timezone_ambiguity",
+            question="Select timezone.",
+            allowed_choices=("Europe/London", "ignore"),
+        ),
+        created_at=NOW,
+    )
+
+    first = await persistence.open_review(item)
+    await persistence.resolve_review(
+        review_id=first.id,
+        decision=ReviewDecision(choice="Europe/London", expected_version=1),
+        resolved_at=NOW,
+    )
+    second = await persistence.open_review(item)
+
+    assert second.id != first.id
+    assert second.id == successor_review_id(first.id, 2)
+    assert persistence.reviews[first.id].status is ReviewStatus.RESOLVED
+    assert second.status is ReviewStatus.OPEN

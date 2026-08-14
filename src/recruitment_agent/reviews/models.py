@@ -18,6 +18,7 @@ class ReviewQueueItem:
     subject: str | None
     event_type: str | None
     source_time_text: str | None
+    orphaned: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True, repr=False)

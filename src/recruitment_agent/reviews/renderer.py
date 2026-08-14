@@ -62,20 +62,9 @@ class ReviewHtmlRenderer:
                 True,
             )
             + console_metric(
-                "申请 / 日历",
-                str(
-                    sum(
-                        1
-                        for item in items
-                        if item.review_type
-                        in {
-                            "APPLICATION_AMBIGUITY",
-                            "UNCERTAIN_RESCHEDULE",
-                            "UNSAFE_CALENDAR_UPDATE",
-                        }
-                    )
-                ),
-                True,
+                "处理中断",
+                str(sum(1 for item in items if item.orphaned)),
+                not any(item.orphaned for item in items),
             )
             + "</div>"
         )
@@ -274,6 +263,17 @@ class ReviewHtmlRenderer:
             role=item.role,
             subject=item.subject,
         )
+        if item.orphaned:
+            return (
+                '<article class="review-card"><div>'
+                '<div class="switch-title"><span class="indicator off"></span>'
+                f"<h3>{escape(headline)}</h3>"
+                '<span class="pill paused">处理中断</span></div>'
+                "<p>确认已经提交, 但没有可继续的下一问. "
+                "去控制台点处理待办邮件即可重跑这封邮件.</p>"
+                "</div>"
+                '<a class="button primary" href="/agent">去控制台重跑</a></article>'
+            )
         action = review_action_label(item.review_type, item.reason)
         event = event_type_label(item.event_type)
         bits = [bit for bit in (event, item.source_time_text) if bit]

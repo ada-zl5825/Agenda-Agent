@@ -88,6 +88,32 @@ def test_detail_form_says_start_time_for_unresolved_event_clock() -> None:
     assert "class=\"topbar\"" in html
 
 
+def test_orphaned_queue_card_does_not_look_cleared() -> None:
+    html = ReviewHtmlRenderer().queue(
+        (
+            ReviewQueueItem(
+                id=uuid4(),
+                source_email_id=uuid4(),
+                review_type="ORPHANED_NEEDS_REVIEW",
+                reason="orphaned_needs_review",
+                created_at=datetime(2026, 8, 14, 12, tzinfo=UTC),
+                company="Example",
+                role="Engineer",
+                subject="Interview",
+                event_type="interview",
+                source_time_text=None,
+                orphaned=True,
+            ),
+        )
+    )
+
+    assert "Example · Engineer" in html
+    assert "处理中断" in html
+    assert "去控制台重跑" in html
+    assert "队列已清空" not in html
+    assert "当前没有待确认的邮件." not in html
+
+
 def test_review_headline_falls_back_to_subject() -> None:
     assert review_headline(company=None, role=None, subject="Fwd: Interview") == "Fwd: Interview"
     assert review_action_label("APPLICATION_AMBIGUITY", "company_unresolved") == "确认公司和申请"

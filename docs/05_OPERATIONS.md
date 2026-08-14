@@ -368,7 +368,10 @@ forward, datetime-override, and duplicate-calendar revisions. Operational conseq
   configured local hour.
 - **Source emails**: `needs_review` is a first-class processing status meaning "waiting on a
   human"; such emails are excluded from retries and `process-pending` batches until their review
-  is resolved. Named interview times without a timezone need timezone confirmation
+  is resolved. If a run stays `needs_review` after every review row is `resolved` (no open
+  form left), the Review queue shows it as `处理中断` and `process-pending` reclaims it as
+  `pending` so a new processing run can start. The console open-review count uses review
+  status `open`, not `pending`. Named interview times without a timezone need timezone confirmation
   only; the extracted wall-clock is rebound to the chosen IANA zone. The
   `YYYY-MM-DD HH:MM` override appears only when the model still could not parse a
   clock. A run failing with `EVENT_DATETIME_UNRESOLVED` after that override means

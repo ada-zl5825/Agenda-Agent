@@ -433,12 +433,13 @@ async def request_review(
 ]:
     stage = WorkflowStage.REQUEST_REVIEW
     request = ReviewRequest.model_validate(state["review_request"])
-    item = ReviewItem.create(
-        processing_run_id=_run_id(state),
-        request=request,
-        created_at=runtime.context.clock.now(),
+    item = await runtime.context.persistence.open_review(
+        ReviewItem.create(
+            processing_run_id=_run_id(state),
+            request=request,
+            created_at=runtime.context.clock.now(),
+        )
     )
-    await runtime.context.persistence.open_review(item)
     await _advance(
         state,
         runtime,

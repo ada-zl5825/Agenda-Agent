@@ -1,6 +1,6 @@
 """Provider-neutral contracts persisted by the Phase 5/6 workflow."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid5
@@ -282,6 +282,21 @@ class ReviewItem:
             version=1,
             created_at=created_at,
         )
+
+    def successor(self) -> "ReviewItem":
+        """Open a new row when the stable identity was already resolved."""
+        return replace(
+            self,
+            id=successor_review_id(self.id, self.version),
+            status=ReviewStatus.OPEN,
+            version=1,
+        )
+
+
+def successor_review_id(review_id: UUID, version: int) -> UUID:
+    if version < 1:
+        raise ValueError("review version must be positive")
+    return uuid5(_REVIEW_NAMESPACE, f"{review_id}:retry:{version}")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
