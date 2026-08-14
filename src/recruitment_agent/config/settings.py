@@ -101,6 +101,7 @@ class MicrosoftSettings(BaseSettings):
     mail_folder_id: str = "inbox"
     mail_sync_enabled: bool = True
     mail_sync_interval_minutes: int = Field(default=10, ge=1, le=1440)
+    workflow_processing_enabled: bool = False
     calendar_sync_enabled: bool = False
     calendar_interview_placeholder_minutes: int = Field(default=60, ge=1, le=1440)
     calendar_assessment_placeholder_minutes: int = Field(default=30, ge=1, le=1440)
@@ -221,6 +222,54 @@ class MicrosoftSettings(BaseSettings):
 def get_microsoft_settings() -> MicrosoftSettings:
     """Load Phase 1 settings only at a Microsoft integration boundary."""
     return MicrosoftSettings()
+
+
+class OperationsSettings(BaseSettings):
+    """Phase 9A protected control-plane and queue settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    ops_api_token: SecretStr = Field(repr=False)
+    ops_queue_name: str = "recruitment-operations"
+
+    @field_validator("ops_api_token")
+    @classmethod
+    def validate_ops_api_token(cls, value: SecretStr) -> SecretStr:
+        try:
+            decoded = b64decode(value.get_secret_value(), validate=True)
+        except (Base64Error, ValueError) as exc:
+            raise ValueError("OPS_API_TOKEN must be valid base64") from exc
+        if len(decoded) != 32:
+            raise ValueError("OPS_API_TOKEN must decode to exactly 32 bytes")
+        return value
+
+    @field_validator("ops_queue_name")
+    @classmethod
+    def validate_queue_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not 3 <= len(normalized) <= 63 or any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789-"
+            for character in normalized
+        ):
+            raise ValueError("OPS_QUEUE_NAME must be a valid Azure queue name")
+        if normalized.startswith("-") or normalized.endswith("-") or "--" in normalized:
+            raise ValueError("OPS_QUEUE_NAME must be a valid Azure queue name")
+        return normalized
+
+    @property
+    def api_token(self) -> str:
+        return self.ops_api_token.get_secret_value()
+
+
+@lru_cache(maxsize=1)
+def get_operations_settings() -> OperationsSettings:
+    """Load control-plane secrets only at its composition boundary."""
+    return OperationsSettings()
 
 
 class LinkEncryptionSettings(BaseSettings):

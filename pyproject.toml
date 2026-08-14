@@ -15,6 +15,7 @@ dependencies = [
   "azure-functions>=1.23,<2",
   "azure-identity>=1.25,<2",
   "azure-keyvault-secrets>=4.10,<5",
+  "azure-storage-queue>=12.14,<13",
   "beautifulsoup4>=4.13,<5",
   "cryptography>=45,<47",
   "fastapi>=0.116,<1",
@@ -33,6 +34,7 @@ dependencies = [
 ]
 
 [project.scripts]
+database-maintenance = "recruitment_agent.jobs.database_maintenance:main"
 seed-companies = "recruitment_agent.jobs.company_seed:main"
 
 [dependency-groups]

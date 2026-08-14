@@ -1,4 +1,4 @@
-# Test Plan through Phase 8
+# Test Plan through Phase 9A
 
 The automated suite covers:
 
@@ -68,7 +68,12 @@ The automated suite covers:
   optimistic versions, workflow resume, and read-only resolved state;
 - Phase 8 migration, `Mail.Send`, Timer, Key Vault, and disabled-by-default deployment configuration;
 - graph-state, object-representation and failure-audit privacy regressions; and
-- isolated PostgreSQL checkpoint connection configuration.
+- isolated PostgreSQL checkpoint connection configuration;
+- bearer-protected liveness/readiness separation and operations routes;
+- runtime-control optimistic versions and Calendar/workflow safety invariants;
+- idempotent command submission, opaque queue messages, leases, bounded retries and batch fan-out;
+- paused-state-only delta cursor reset and privacy-safe status projections; and
+- application-only versus infrastructure deployment scope selection.
 
 The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
 They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency,

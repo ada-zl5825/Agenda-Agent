@@ -20,10 +20,12 @@ def test_phase_four_five_tables_use_application_schema() -> None:
         "app.mail_sync_states",
         "app.microsoft_authorization_flows",
         "app.microsoft_connections",
+        "app.operation_runs",
         "app.llm_extractions",
         "app.processing_runs",
         "app.recruitment_events",
         "app.review_items",
+        "app.runtime_controls",
         "app.secure_links",
         "app.source_emails",
     }

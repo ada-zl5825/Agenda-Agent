@@ -27,9 +27,9 @@ from recruitment_agent.persistence.secure_links import SqlAlchemySecureLinkRepos
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
 
 
-async def run_daily_brief_job() -> bool | None:
+async def run_daily_brief_job(*, force: bool = False) -> bool | None:
     settings = get_microsoft_settings()
-    if not settings.daily_brief_enabled:
+    if not force and not settings.daily_brief_enabled:
         return None
     app_settings = get_settings()
     clock = SystemClock()

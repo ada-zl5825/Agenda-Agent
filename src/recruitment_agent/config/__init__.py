@@ -5,9 +5,11 @@ from recruitment_agent.config.settings import (
     LinkEncryptionSettings,
     LogLevel,
     MicrosoftSettings,
+    OperationsSettings,
     Settings,
     get_link_encryption_settings,
     get_microsoft_settings,
+    get_operations_settings,
     get_settings,
 )
 
@@ -16,8 +18,10 @@ __all__ = [
     "LinkEncryptionSettings",
     "LogLevel",
     "MicrosoftSettings",
+    "OperationsSettings",
     "Settings",
     "get_link_encryption_settings",
     "get_microsoft_settings",
+    "get_operations_settings",
     "get_settings",
 ]

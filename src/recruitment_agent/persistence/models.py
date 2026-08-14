@@ -582,6 +582,118 @@ class DailyBriefModel(TimestampMixin, Base):
     error_code: Mapped[str | None] = mapped_column(String(64))
 
 
+class RuntimeControlModel(TimestampMixin, Base):
+    """Per-account operational switches with optimistic concurrency."""
+
+    __tablename__ = "runtime_controls"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="runtime_control_version_positive"),
+        CheckConstraint(
+            "reason IN ('manual', 'testing', 'maintenance', 'incident', 'account_switch')",
+            name="runtime_control_reason_valid",
+        ),
+        CheckConstraint(
+            "NOT calendar_write_enabled OR workflow_enabled",
+            name="runtime_control_calendar_requires_workflow",
+        ),
+    )
+
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.microsoft_connections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    mail_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    workflow_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    calendar_write_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    daily_brief_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class OperationRunModel(TimestampMixin, Base):
+    """Privacy-safe audit and lease for one asynchronous control command."""
+
+    __tablename__ = "operation_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id",
+            "operation_type",
+            "idempotency_key_hash",
+            name="uq_operation_runs_idempotency",
+        ),
+        CheckConstraint(
+            "length(idempotency_key_hash) = 64",
+            name="operation_idempotency_hash_sha256",
+        ),
+        CheckConstraint("attempt_count >= 0", name="operation_attempt_count_nonnegative"),
+        CheckConstraint(
+            "batch_limit IS NULL OR (batch_limit >= 1 AND batch_limit <= 100)",
+            name="operation_batch_limit_bounded",
+        ),
+        CheckConstraint(
+            "operation_type IN ('mail_sync', 'process_email', 'process_pending', "
+            "'reset_mail_cursor')",
+            name="operation_type_valid",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="operation_status_valid",
+        ),
+        CheckConstraint(
+            "(operation_type = 'process_email' AND source_email_id IS NOT NULL "
+            "AND batch_limit IS NULL) OR "
+            "(operation_type = 'process_pending' AND source_email_id IS NULL "
+            "AND batch_limit IS NOT NULL) OR "
+            "(operation_type IN ('mail_sync', 'reset_mail_cursor') "
+            "AND source_email_id IS NULL AND batch_limit IS NULL)",
+            name="operation_parameters_match_type",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    operation_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    idempotency_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_email_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.source_emails.id", ondelete="SET NULL"),
+        index=True,
+    )
+    batch_limit: Mapped[int | None] = mapped_column(Integer)
+    parent_operation_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app.operation_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+
+
 class EventHistoryModel(Base):
     __tablename__ = "event_history"
 

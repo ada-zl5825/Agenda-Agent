@@ -8,6 +8,7 @@ from recruitment_agent.config.settings import (
     AzureOpenAISettings,
     LinkEncryptionSettings,
     MicrosoftSettings,
+    OperationsSettings,
     Settings,
 )
 
@@ -151,3 +152,17 @@ def test_azure_openai_settings_require_enabled_boundary() -> None:
         azure_openai_deployment="structured-model",
     )
     assert settings.azure_openai_deployment == "structured-model"
+
+
+def test_phase_nine_a_operations_secret_and_queue_are_validated() -> None:
+    token = b64encode(b"o" * 32).decode()
+    settings = OperationsSettings(ops_api_token=token)
+
+    assert settings.api_token == token
+    assert token not in repr(settings)
+    assert settings.ops_queue_name == "recruitment-operations"
+
+    with pytest.raises(ValidationError, match="exactly 32 bytes"):
+        OperationsSettings(ops_api_token=b64encode(b"short").decode())
+    with pytest.raises(ValidationError, match="valid Azure queue name"):
+        OperationsSettings(ops_api_token=token, ops_queue_name="Invalid--Queue")

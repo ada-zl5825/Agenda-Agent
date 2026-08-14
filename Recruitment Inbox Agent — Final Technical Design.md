@@ -3503,6 +3503,35 @@ load/error testing
 production deployment
 ```
 
+### Phase 9A — Operational control plane
+
+```text
+Public liveness
+
+Protected readiness and privacy-safe status
+
+PostgreSQL-backed runtime switches with optimistic versions
+
+Idempotent HTTP commands returning 202 + operation ID
+
+Azure Storage Queue worker using opaque operation IDs only
+
+Audited manual mail sync, bounded workflow processing and safe cursor reset
+
+Application-only deployment separated from infrastructure/Key Vault deployment
+
+VNet-integrated manual Container Apps Job for allowlisted database checks, Alembic migrations,
+and idempotent company-catalog seeding without a maintenance VM
+```
+
+The control plane must never return OAuth tokens, message bodies, secret-bearing URLs, or decrypted
+links. Long-running Graph and LangGraph work must not execute inside the HTTP request. Runtime
+control is domain-adjacent operational state in PostgreSQL, not LangGraph state. Infrastructure
+deployment runs only when infrastructure, production configuration, or Key Vault structure changes.
+The database-maintenance Job uses a dedicated managed identity, an unversioned Key Vault reference
+to `database-url`, an immutable ACR image tag, and a PostgreSQL advisory lock for mutations. It must
+not accept arbitrary SQL or shell input and must scale to zero between manual executions.
+
 ---
 
 ## Phase 10 — Optional Realtime
