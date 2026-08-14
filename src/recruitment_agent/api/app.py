@@ -7,10 +7,11 @@ side-effect-free health endpoint.
 from typing import Literal
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from recruitment_agent import __version__
+from recruitment_agent.api.agent import router as agent_router
 from recruitment_agent.api.auth import router as auth_router
 from recruitment_agent.api.briefs import router as briefs_router
 from recruitment_agent.api.operations import router as operations_router
@@ -33,10 +34,15 @@ def create_app() -> FastAPI:
         docs_url=None,
         redoc_url=None,
     )
+    application.include_router(agent_router)
     application.include_router(auth_router)
     application.include_router(briefs_router)
     application.include_router(operations_router)
     application.include_router(reviews_router)
+
+    @application.get("/", include_in_schema=False)
+    async def index() -> RedirectResponse:
+        return RedirectResponse(url="/agent", status_code=status.HTTP_303_SEE_OTHER)
 
     @application.exception_handler(ApplicationError)
     async def application_error_handler(

@@ -130,6 +130,18 @@ def test_phase_nine_a_deploys_app_and_infrastructure_on_separate_paths() -> None
     assert "recruitment-operations" in infrastructure
     assert "OPS_API_TOKEN: '@Microsoft.KeyVault(" in infrastructure
     assert "azure-storage-queue==" in requirements
+    assert "^(alembic/|infra/" in app_workflow
+    assert "schema_change" in infra_workflow
+    assert "Hold application deployment until the migration succeeds" in infra_workflow
+
+
+def test_console_admin_identity_can_be_bootstrapped_without_a_new_secret() -> None:
+    infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
+
+    assert "param adminMicrosoftHomeAccountId string = ''" in infrastructure
+    assert "ADMIN_MICROSOFT_HOME_ACCOUNT_ID: adminMicrosoftHomeAccountId" in infrastructure
+    assert "vars.ADMIN_MICROSOFT_HOME_ACCOUNT_ID" in workflow
 
 
 def test_database_maintenance_is_a_private_allowlisted_container_apps_job() -> None:

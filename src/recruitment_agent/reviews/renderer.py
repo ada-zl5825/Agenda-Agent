@@ -25,7 +25,12 @@ class ReviewHtmlRenderer:
             )
             for item in items
         ) or "<p>No open reviews.</p>"
-        return self._page("Reviews", f"<h1>Reviews</h1>{cards}")
+        return self._page(
+            "Reviews",
+            '<nav><a href="/agent">Agent console</a> &middot; '
+            '<a href="/brief/today">Today\'s Brief</a></nav>'
+            f"<h1>Reviews</h1>{cards}",
+        )
 
     def detail(self, detail: ReviewDetail, *, csrf_token: str) -> str:
         age = self._age(detail.created_at, detail.resolved_at or datetime.now(UTC))
@@ -102,7 +107,8 @@ class ReviewHtmlRenderer:
             }
         )
         content = (
-            '<a href="/reviews">&larr; Reviews</a><h1>Review detail</h1>'
+            '<nav><a href="/agent">Agent console</a> &middot; '
+            '<a href="/reviews">&larr; Reviews</a></nav><h1>Review detail</h1>'
             + self._section("Header", header)
             + self._section("Source email", source)
             + self._section("Application", application)

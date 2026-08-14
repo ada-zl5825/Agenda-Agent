@@ -17,6 +17,7 @@ from recruitment_agent.application.errors import (
 from recruitment_agent.application.mail_sync import MailSyncResult
 from recruitment_agent.domain.mail import MailSyncStatus
 from recruitment_agent.domain.ports import Clock
+from recruitment_agent.domain.recipient import normalize_recipient_address
 from recruitment_agent.domain.time import require_aware, require_optional_aware
 
 SafeResultValue = str | int | bool | None
@@ -36,6 +37,7 @@ class OperationType(StrEnum):
     PROCESS_EMAIL = "process_email"
     PROCESS_PENDING = "process_pending"
     RESET_MAIL_CURSOR = "reset_mail_cursor"
+    SEND_DAILY_BRIEF = "send_daily_brief"
 
 
 class OperationStatus(StrEnum):
@@ -51,6 +53,7 @@ class RuntimeControlDefaults:
     workflow_enabled: bool
     calendar_write_enabled: bool
     daily_brief_enabled: bool
+    daily_brief_recipient: str | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -67,6 +70,7 @@ class RuntimeControl:
     workflow_enabled: bool
     calendar_write_enabled: bool
     daily_brief_enabled: bool
+    daily_brief_recipient: str | None
     version: int
     reason: ControlReason
     updated_by: str
@@ -79,6 +83,11 @@ class RuntimeControl:
             raise ValueError("calendar writes require workflow processing")
         if not self.updated_by.strip():
             raise ValueError("runtime control actor must not be empty")
+        if self.daily_brief_recipient is not None and (
+            normalize_recipient_address(self.daily_brief_recipient)
+            != self.daily_brief_recipient
+        ):
+            raise ValueError("Daily Brief recipient must be normalized")
         require_aware(self.updated_at, field_name="updated_at")
 
 
@@ -90,6 +99,7 @@ class RuntimeControlPatch:
     workflow_enabled: bool | None = None
     calendar_write_enabled: bool | None = None
     daily_brief_enabled: bool | None = None
+    daily_brief_recipient: str | None = None
 
     def __post_init__(self) -> None:
         if self.expected_version < 1:
@@ -101,9 +111,15 @@ class RuntimeControlPatch:
                 self.workflow_enabled,
                 self.calendar_write_enabled,
                 self.daily_brief_enabled,
+                self.daily_brief_recipient,
             )
         ):
             raise ValueError("runtime control patch must change at least one switch")
+        if self.daily_brief_recipient is not None and (
+            normalize_recipient_address(self.daily_brief_recipient)
+            != self.daily_brief_recipient
+        ):
+            raise ValueError("Daily Brief recipient must be normalized")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -308,6 +324,8 @@ class WorkflowOperationResult:
 class OperationHandlers(Protocol):
     async def synchronize_mail(self) -> MailSyncResult: ...
 
+    async def send_daily_brief(self, *, recipient: str) -> bool: ...
+
     async def process_email(
         self,
         *,
@@ -375,6 +393,13 @@ class OperationsControlService:
             raise OperationConflictError("calendar writes are not configured in this deployment")
         if patch.daily_brief_enabled is True and not self._capabilities.daily_brief_available:
             raise OperationConflictError("Daily Brief is not configured in this deployment")
+        effective_recipient = (
+            current.daily_brief_recipient
+            if patch.daily_brief_recipient is None
+            else patch.daily_brief_recipient
+        )
+        if patch.daily_brief_enabled is True and effective_recipient is None:
+            raise OperationConflictError("Daily Brief recipient is not configured")
         return await self._store.update_control(
             account_id=self._account_id,
             patch=patch,
@@ -557,6 +582,17 @@ class OperationExecutor:
                 folder_id=self._folder_id,
             )
             return {"cursor_reset": reset}
+        if operation.operation_type is OperationType.SEND_DAILY_BRIEF:
+            if not control.daily_brief_enabled:
+                raise OperationDisabledError("Daily Brief delivery is paused")
+            if not self._capabilities.daily_brief_available:
+                raise OperationDisabledError("Daily Brief delivery is not configured")
+            if control.daily_brief_recipient is None:
+                raise OperationDisabledError("Daily Brief recipient is not configured")
+            sent = await self._handlers.send_daily_brief(
+                recipient=control.daily_brief_recipient,
+            )
+            return {"sent": sent, "already_sent": not sent}
         if operation.operation_type is OperationType.PROCESS_PENDING:
             if not control.workflow_enabled:
                 raise OperationDisabledError("workflow processing is paused")

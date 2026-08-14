@@ -88,8 +88,10 @@ uv run alembic upgrade head
 For a fresh Entra app registration, `bootstrap-azure.ps1` requests `User.Read`, `Mail.Read`,
 `Calendars.ReadWrite`, and `Mail.Send`. For an existing registration, add the delegated
 `Calendars.ReadWrite`
-permission directly in Entra/Azure Portal or with Azure CLI, then visit `/auth/login` and complete
-consent again so the encrypted MSAL cache contains a token for the expanded scopes. Do not rerun the
+permission directly in Entra/Azure Portal or with Azure CLI, then sign in to `/agent` and use
+`/auth/mailbox/connect` to complete consent again so the encrypted MSAL cache contains a token for
+the expanded scopes. Ordinary `/auth/login` authenticates the console administrator and never
+replaces the Graph cache. Do not rerun the
 whole bootstrap merely to add this permission: that script intentionally rotates the Microsoft
 client secret and application encryption secrets.
 
@@ -108,16 +110,19 @@ If a user deletes a linked Outlook event, replacement is blocked behind
 
 Phase 8 adds migration `20260813_0009`, delegated Graph permission `Mail.Send`, a Daily Brief timer,
 and authenticated graphical Review routes. Apply the migration first. For an existing Entra app,
-add delegated `Mail.Send` and complete `/auth/login` again so the encrypted MSAL cache contains a
-token for the expanded scopes. `Mail.ReadWrite` remains forbidden.
+add delegated `Mail.Send` and complete `/auth/mailbox/connect` from an authenticated console so the
+encrypted MSAL cache contains a token for the expanded scopes. `Mail.ReadWrite` remains forbidden.
 
 Configure a dedicated Base64-encoded random 32-byte `WEB_SESSION_SIGNING_KEY`; it must not reuse
-`TOKEN_CACHE_ENCRYPTION_KEY` or the action-link key. Configure `DAILY_BRIEF_RECIPIENT` and keep
-`DAILY_BRIEF_ENABLED=false` until migration and reauthorization are complete. The deployed Function
+`TOKEN_CACHE_ENCRYPTION_KEY` or the action-link key. `DAILY_BRIEF_RECIPIENT` is an optional bootstrap
+value; it can be set in the authenticated console after migration. Keep `DAILY_BRIEF_ENABLED=false`
+until migration, recipient setup, and reauthorization are complete. The deployed Function
 hostname supplies `PUBLIC_APP_BASE_URL`; local environments must set it explicitly. Linux Flex
 Consumption does not support `WEBSITE_TIME_ZONE` or `TZ`, so the six-field NCRONTAB schedule
 `0 0 * * * *` wakes hourly in UTC. Application code sends only when `USER_TIMEZONE` reaches
-`DAILY_BRIEF_LOCAL_HOUR=8`, including across daylight-saving transitions.
+`DAILY_BRIEF_LOCAL_HOUR=8`, including across daylight-saving transitions. The environment recipient
+is only the bootstrap value for `app.runtime_controls`; the authenticated `/agent` console can
+replace the live recipient with optimistic versioning and CSRF protection without redeployment.
 
 The timer claims at most one send per Microsoft connection and local date. A Graph 202 response is
 recorded as accepted. A network or Graph 5xx outcome is recorded as uncertain and is never retried
@@ -149,8 +154,12 @@ Future timers and external calls must be idempotent, timeout-bounded and retry-b
 ## Phase 9A runtime control and manual operations
 
 Phase 9A adds migration `20260813_0010`, the `app.runtime_controls` source of truth, and the
-privacy-safe `app.operation_runs` audit/lease table. Apply the migration before deploying the
-Phase 9A application code:
+privacy-safe `app.operation_runs` audit/lease table. Migration `20260814_0011` extends the
+allowlisted operation types for manual Daily Brief delivery, creates the independent
+`app.admin_identities` allowlist, and adds the versioned Daily Brief recipient to runtime controls.
+On upgrade it seeds the currently authorized Microsoft `home_account_id` as the initial administrator.
+`ADMIN_MICROSOFT_HOME_ACCOUNT_ID` is an optional explicit bootstrap/recovery override, not a secret.
+Apply all migrations before deploying the matching application code:
 
 ```text
 uv run alembic upgrade head
@@ -174,6 +183,7 @@ Available control and observation routes are:
 - `POST /api/v1/ops/operations/mail-sync`;
 - `POST /api/v1/ops/operations/process-email/{source_email_id}`;
 - `POST /api/v1/ops/operations/process-pending` with a bounded `1..100` limit;
+- `POST /api/v1/ops/operations/daily-brief` for idempotent same-day delivery;
 - `POST /api/v1/ops/operations/reset-mail-cursor`; and
 - `GET /api/v1/ops/operations/{operation_id}`.
 
@@ -200,6 +210,38 @@ Calendar cannot be enabled unless the deployment has `CALENDAR_SYNC_ENABLED=true
 cannot be enabled until its recipient, public base URL, and independent web-session key are
 configured. These checks prevent a runtime switch from claiming an external side effect is active
 when its cloud boundary is unavailable.
+
+### Authenticated visual control console
+
+`GET /agent` is the signed-session browser surface for the same application service. Opening `/`
+redirects to it, and an unauthenticated visitor completes allowlisted Microsoft administrator login
+before returning to the console. This login discards its temporary MSAL cache and does not change
+the Agent mailbox. Only `/auth/mailbox/connect`, started from an existing administrator session,
+may replace the encrypted Graph cache. The browser never receives `OPS_API_TOKEN`; the server
+verifies that the signed session is bound to the configured connection and invokes the Phase 9A
+service directly.
+
+The page displays only privacy-safe operational data: database and OAuth readiness, the four
+runtime switches and capability ceilings, mail-sync cursor/timestamps/error code, aggregate source,
+workflow and operation counts, open Review count, latest Brief audit state, and the selected opaque
+operation status. The explicitly configured Daily Brief recipient is visible only to an authenticated
+administrator in its settings panel. The page never renders message IDs, subjects, bodies, OAuth
+credentials, decrypted links, Graph DTOs, prompts, or model output.
+
+The console supports:
+
+- optimistic, PostgreSQL-backed mail-sync, workflow, Calendar-write and Daily-Brief switches;
+- explicit Outlook connection/replacement that is separate from administrator login;
+- viewing and updating the versioned Daily Brief recipient without an Azure deployment;
+- idempotent manual mail synchronization;
+- bounded pending-workflow fan-out; and
+- idempotent manual delivery of today's Daily Brief.
+
+Every browser mutation is a same-origin form protected by a CSRF token bound to the signed session,
+typed action and current control version. Manual actions create an `operation_runs` row and enqueue
+only its opaque UUID; the HTTP request never waits for Graph, LangGraph or Brief delivery. A manual
+Daily Brief still uses the existing at-most-once `(account_id, brief_date)` claim, so clicking twice
+cannot send a duplicate successful Brief.
 
 Example PowerShell smoke sequence (do not paste the token into logs or source control):
 
@@ -254,9 +296,11 @@ infrastructure deployment. It must be an independent base64-encoded random 32-by
 not reuse the token-cache, action-link, or web-session key.
 
 `deploy-app.yml` publishes ordinary application changes after `quality` succeeds. Its scope check
-skips the deployment when the verified revision changes `infra/**`, `scripts/bootstrap-azure.ps1`,
-or `deploy-infra.yml`; in that case `deploy-infra.yml` validates and incrementally deploys Bicep and
-then publishes the matching application package. The infrastructure workflow can also be manually
+skips the deployment when the verified revision changes `alembic/**`, `infra/**`,
+`scripts/bootstrap-azure.ps1`, or `deploy-infra.yml`; in that case `deploy-infra.yml` validates and
+incrementally deploys Bicep and builds the matching immutable database-maintenance image. For a
+schema change, it deliberately holds the Function package: run the `migrate` Job, verify success,
+then manually dispatch `deploy-production-app`. The infrastructure workflow can also be manually
 dispatched from `main`, but it does not run for ordinary code-only changes. Azure trusts the exact
 immutable GitHub OIDC
 subject built from this repository's owner ID, repository ID, and `production` environment. Forks,

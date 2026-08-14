@@ -9,7 +9,9 @@ from recruitment_agent.api.dependencies import (
     get_authorization_service,
     get_web_session_manager,
 )
+from recruitment_agent.application.errors import ReviewAuthenticationError
 from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
+from recruitment_agent.microsoft.auth_contracts import AuthorizationPurpose
 from recruitment_agent.web.security import WebSessionManager
 
 router = APIRouter(prefix="/auth", tags=["microsoft-auth"])
@@ -25,9 +27,44 @@ async def login(
     request: Request,
     service: AuthorizationService,
     sessions: SessionManager,
-    return_to: str = "/reviews",
+    return_to: str = "/agent",
 ) -> RedirectResponse:
-    result = await service.start_authorization()
+    result = await service.start_admin_authorization()
+    response = RedirectResponse(
+        url=result.authorization_url,
+        status_code=status.HTTP_302_FOUND,
+    )
+    response.set_cookie(
+        sessions.return_cookie_name,
+        sessions.issue_return_path(return_to),
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=600,
+        path="/auth",
+    )
+    return response
+
+
+@router.get("/mailbox/connect", response_class=RedirectResponse)
+async def connect_mailbox(
+    request: Request,
+    service: AuthorizationService,
+    sessions: SessionManager,
+    return_to: str = "/agent",
+) -> RedirectResponse:
+    """Start an explicit Outlook connection change from an admin session."""
+    token = request.cookies.get(sessions.cookie_name)
+    try:
+        session = sessions.authenticate(token)
+    except ReviewAuthenticationError:
+        return RedirectResponse(
+            url="/auth/login?return_to=/agent",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    result = await service.start_mailbox_authorization(
+        initiated_by=session.admin_home_account_id,
+    )
     response = RedirectResponse(
         url=result.authorization_url,
         status_code=status.HTTP_302_FOUND,
@@ -50,19 +87,39 @@ async def callback(
     service: AuthorizationService,
     sessions: SessionManager,
 ) -> RedirectResponse:
-    result = await service.complete_authorization(dict(request.query_params))
+    session_token = request.cookies.get(sessions.cookie_name)
+    try:
+        existing_session = sessions.authenticate(session_token)
+        admin_home_account_id: str | None = existing_session.admin_home_account_id
+    except ReviewAuthenticationError:
+        admin_home_account_id = None
+    result = await service.complete_authorization(
+        dict(request.query_params),
+        admin_home_account_id=admin_home_account_id,
+    )
     return_path = sessions.read_return_path(
         request.cookies.get(sessions.return_cookie_name)
     )
-    response = RedirectResponse(url=return_path, status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(
-        sessions.cookie_name,
-        sessions.issue(result.connection_id),
-        httponly=True,
-        secure=request.url.scheme == "https",
-        samesite="lax",
-        max_age=sessions.cookie_max_age,
-        path="/",
+    target = (
+        f"{return_path}?notice=mailbox-connected"
+        if result.purpose is AuthorizationPurpose.MAILBOX_CONNECTION
+        and return_path == "/agent"
+        else return_path
     )
+    response = RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
+    if result.purpose is AuthorizationPurpose.ADMIN_LOGIN:
+        response.set_cookie(
+            sessions.cookie_name,
+            sessions.issue(
+                result.connection_id,
+                admin_home_account_id=result.home_account_id,
+                admin_tenant_id=result.tenant_id,
+            ),
+            httponly=True,
+            secure=request.url.scheme == "https",
+            samesite="lax",
+            max_age=sessions.cookie_max_age,
+            path="/",
+        )
     response.delete_cookie(sessions.return_cookie_name, path="/auth")
     return response

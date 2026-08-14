@@ -26,6 +26,9 @@ param microsoftClientSecret string
 @description('Stable connection ID for the single Outlook account.')
 param microsoftConnectionId string
 
+@description('Optional Microsoft home_account_id override for the sole console administrator.')
+param adminMicrosoftHomeAccountId string = ''
+
 @secure()
 @description('Base64-encoded 32-byte key used to encrypt the MSAL token cache.')
 param tokenCacheEncryptionKey string
@@ -531,6 +534,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       MICROSOFT_TENANT: 'consumers'
       MICROSOFT_REDIRECT_URI: 'https://${functionApp.properties.defaultHostName}/auth/callback'
       MICROSOFT_CONNECTION_ID: microsoftConnectionId
+      ADMIN_MICROSOFT_HOME_ACCOUNT_ID: adminMicrosoftHomeAccountId
       TOKEN_CACHE_ENCRYPTION_KEY: '@Microsoft.KeyVault(SecretUri=${tokenCacheEncryptionKeyValue.properties.secretUriWithVersion})'
       TOKEN_CACHE_ENCRYPTION_KEY_VERSION: 'v1'
       AZURE_KEY_VAULT_URL: keyVault.properties.vaultUri

@@ -11,8 +11,9 @@ from recruitment_agent.application.errors import (
     AuthenticationRequiredError,
 )
 from recruitment_agent.config.settings import MicrosoftSettings
-from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
+from recruitment_agent.microsoft.auth import ADMIN_LOGIN_SCOPES, MicrosoftAuthorizationService
 from recruitment_agent.microsoft.auth_contracts import (
+    AuthorizationPurpose,
     JsonObject,
     StoredAuthorizationFlow,
     TokenCacheSnapshot,
@@ -53,6 +54,7 @@ class AuthStore:
         self.saved_home_account_id: str | None = None
         self.saved_tenant_id: str | None = None
         self.saved_expected_revision: int | None = None
+        self.allowed_admin = "new-account"
 
     async def ensure_connection(self, connection_id: UUID) -> None:
         assert connection_id == self.connection_id
@@ -89,6 +91,15 @@ class AuthStore:
         del state_hash, consumed_at
         assert self.flow is not None
         return self.flow
+
+    async def is_admin_identity_allowed(
+        self,
+        *,
+        home_account_id: str,
+        tenant_id: str | None,
+    ) -> bool:
+        del tenant_id
+        return home_account_id == self.allowed_admin
 
 
 class MsalClient:
@@ -179,7 +190,7 @@ async def test_oauth_start_uses_phase_eight_graph_scopes_and_encrypted_flow() ->
         client_factory=Factory(client),
     )
 
-    result = await service.start_authorization()
+    result = await service.start_mailbox_authorization(initiated_by="admin-account")
 
     assert result.authorization_url.startswith("https://login.microsoftonline.com")
     assert client.scopes == GRAPH_DELEGATED_SCOPES
@@ -219,14 +230,18 @@ async def test_account_switch_replaces_old_cache_with_selected_account() -> None
         client_factory=factory,
     )
 
-    await service.start_authorization()
+    await service.start_mailbox_authorization(initiated_by="admin-account")
     assert client.state is not None
-    result = await service.complete_authorization({"state": client.state, "code": "code"})
+    result = await service.complete_authorization(
+        {"state": client.state, "code": "code"},
+        admin_home_account_id="admin-account",
+    )
 
     assert result.home_account_id == "new-account"
     assert store.saved_home_account_id == "new-account"
     assert store.saved_tenant_id == "new-tenant"
     assert store.saved_expected_revision == 7
+    assert result.purpose is AuthorizationPurpose.MAILBOX_CONNECTION
     assert len(factory.caches) == 2
     assert factory.caches[0] is not factory.caches[1]
 
@@ -243,10 +258,78 @@ async def test_account_switch_rejects_ambiguous_msal_accounts() -> None:
         client_factory=Factory(client),
     )
 
-    await service.start_authorization()
+    await service.start_mailbox_authorization(initiated_by="admin-account")
     assert client.state is not None
     with pytest.raises(AuthenticationFailedError, match="multiple accounts"):
+        await service.complete_authorization(
+            {"state": client.state, "code": "code"},
+            admin_home_account_id="admin-account",
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_login_uses_identity_scope_and_does_not_replace_mailbox_cache() -> None:
+    connection_id = uuid4()
+    store = AuthStore(connection_id)
+    client = SwitchedAccountMsalClient()
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=store,
+        cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
+        clock=SystemClock(),
+        client_factory=Factory(client),
+    )
+
+    await service.start_admin_authorization()
+    assert client.state is not None
+    result = await service.complete_authorization({"state": client.state, "code": "code"})
+
+    assert client.scopes == ADMIN_LOGIN_SCOPES
+    assert result.purpose is AuthorizationPurpose.ADMIN_LOGIN
+    assert store.saved_home_account_id is None
+
+
+@pytest.mark.asyncio
+async def test_admin_login_rejects_an_identity_outside_the_allowlist() -> None:
+    connection_id = uuid4()
+    store = AuthStore(connection_id)
+    store.allowed_admin = "different-account"
+    client = SwitchedAccountMsalClient()
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=store,
+        cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
+        clock=SystemClock(),
+        client_factory=Factory(client),
+    )
+
+    await service.start_admin_authorization()
+    assert client.state is not None
+    with pytest.raises(AuthenticationFailedError, match="not authorized"):
         await service.complete_authorization({"state": client.state, "code": "code"})
+
+    assert store.saved_home_account_id is None
+
+
+@pytest.mark.asyncio
+async def test_mailbox_connection_requires_the_initiating_admin_session() -> None:
+    connection_id = uuid4()
+    client = SwitchedAccountMsalClient()
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=AuthStore(connection_id),
+        cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
+        clock=SystemClock(),
+        client_factory=Factory(client),
+    )
+
+    await service.start_mailbox_authorization(initiated_by="admin-account")
+    assert client.state is not None
+    with pytest.raises(AuthenticationFailedError, match="administrator session"):
+        await service.complete_authorization(
+            {"state": client.state, "code": "code"},
+            admin_home_account_id="different-admin",
+        )
 
 
 def test_aes_gcm_round_trip_and_context_authentication() -> None:

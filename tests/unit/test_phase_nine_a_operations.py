@@ -49,6 +49,7 @@ class ControlStore:
         self.operations: dict[UUID, OperationSnapshot] = {}
         self.by_key: dict[tuple[OperationType, str], UUID] = {}
         self.failed: list[tuple[UUID, str]] = []
+        self.completed: list[tuple[UUID, dict[str, str | int | bool | None]]] = []
         self.released: list[UUID] = []
         self.cursor_resets = 0
 
@@ -84,6 +85,11 @@ class ControlStore:
                 self.control.daily_brief_enabled
                 if patch.daily_brief_enabled is None
                 else patch.daily_brief_enabled
+            ),
+            daily_brief_recipient=(
+                self.control.daily_brief_recipient
+                if patch.daily_brief_recipient is None
+                else patch.daily_brief_recipient
             ),
             version=self.control.version + 1,
             reason=patch.reason,
@@ -148,6 +154,15 @@ class ControlStore:
     ) -> None:
         self.failed.append((operation_id, error_code))
 
+    async def complete_operation(
+        self,
+        *,
+        operation_id: UUID,
+        result: dict[str, str | int | bool | None],
+        **_kwargs: object,
+    ) -> None:
+        self.completed.append((operation_id, result))
+
     async def release_operation_for_retry(
         self, *, operation_id: UUID, **_kwargs: object
     ) -> None:
@@ -158,12 +173,13 @@ class ControlStore:
         return True
 
 
-def runtime_control(**changes: bool) -> RuntimeControl:
-    values = {
+def runtime_control(**changes: bool | str | None) -> RuntimeControl:
+    values: dict[str, bool | str | None] = {
         "mail_sync_enabled": False,
         "workflow_enabled": False,
         "calendar_write_enabled": False,
         "daily_brief_enabled": False,
+        "daily_brief_recipient": "brief@example.test",
     }
     values.update(changes)
     return RuntimeControl(
@@ -188,6 +204,7 @@ def service(store: ControlStore, queue: RecordingQueue) -> OperationsControlServ
             workflow_enabled=False,
             calendar_write_enabled=False,
             daily_brief_enabled=False,
+            daily_brief_recipient="brief@example.test",
         ),
         capabilities=RuntimeCapabilities(
             workflow_processing_available=True,
@@ -231,6 +248,20 @@ async def test_calendar_cannot_be_enabled_while_workflow_is_paused() -> None:
 
 
 @pytest.mark.asyncio
+async def test_daily_brief_cannot_be_enabled_without_a_runtime_recipient() -> None:
+    store = ControlStore(runtime_control(daily_brief_recipient=None))
+
+    with pytest.raises(OperationConflictError, match="recipient"):
+        await service(store, RecordingQueue()).update_control(
+            RuntimeControlPatch(
+                expected_version=1,
+                reason=ControlReason.TESTING,
+                daily_brief_enabled=True,
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_cursor_reset_fails_safely_until_sync_and_workflow_are_paused() -> None:
     store = ControlStore(runtime_control(mail_sync_enabled=True))
     operation, _ = await store.create_operation(
@@ -253,6 +284,7 @@ async def test_cursor_reset_fails_safely_until_sync_and_workflow_are_paused() ->
             workflow_enabled=False,
             calendar_write_enabled=False,
             daily_brief_enabled=False,
+            daily_brief_recipient="brief@example.test",
         ),
         capabilities=RuntimeCapabilities(
             workflow_processing_available=True,
@@ -267,6 +299,54 @@ async def test_cursor_reset_fails_safely_until_sync_and_workflow_are_paused() ->
     assert store.failed == [(operation.id, "OPERATION_CONFLICT")]
 
 
+@pytest.mark.asyncio
+async def test_manual_daily_brief_is_audited_and_respects_the_runtime_switch() -> None:
+    class Handlers:
+        def __init__(self) -> None:
+            self.sends = 0
+
+        async def send_daily_brief(self, *, recipient: str) -> bool:
+            assert recipient == "brief@example.test"
+            self.sends += 1
+            return True
+
+    store = ControlStore(runtime_control(daily_brief_enabled=True))
+    operation, _ = await store.create_operation(
+        request=OperationCreate(
+            account_id=ACCOUNT_ID,
+            operation_type=OperationType.SEND_DAILY_BRIEF,
+            idempotency_key_hash="b" * 64,
+        ),
+        requested_at=NOW,
+    )
+    handlers = Handlers()
+    executor = OperationExecutor(
+        store=store,  # type: ignore[arg-type]
+        queue=RecordingQueue(),
+        handlers=handlers,  # type: ignore[arg-type]
+        clock=FixedClock(),
+        account_id=ACCOUNT_ID,
+        folder_id="inbox",
+        defaults=RuntimeControlDefaults(
+            mail_sync_enabled=False,
+            workflow_enabled=False,
+            calendar_write_enabled=False,
+            daily_brief_enabled=True,
+            daily_brief_recipient="brief@example.test",
+        ),
+        capabilities=RuntimeCapabilities(
+            workflow_processing_available=True,
+            calendar_write_available=True,
+            daily_brief_available=True,
+        ),
+    )
+
+    await executor.execute(operation.id)
+
+    assert handlers.sends == 1
+    assert store.completed == [(operation.id, {"sent": True, "already_sent": False})]
+
+
 def test_operations_token_is_constant_contract_and_routes_are_exposed() -> None:
     authenticator = OperationsTokenAuthenticator("expected")
     authenticator.authenticate("expected")
@@ -279,3 +359,4 @@ def test_operations_token_is_constant_contract_and_routes_are_exposed() -> None:
     assert "/api/v1/ops/status" in paths
     assert "/api/v1/ops/operations/mail-sync" in paths
     assert "/api/v1/ops/operations/process-pending" in paths
+    assert "/api/v1/ops/operations/daily-brief" in paths

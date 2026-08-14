@@ -67,6 +67,21 @@ class MicrosoftConnectionModel(TimestampMixin, Base):
     )
 
 
+class AdminIdentityModel(TimestampMixin, Base):
+    """Allowlisted Microsoft identity that may receive an admin web session."""
+
+    __tablename__ = "admin_identities"
+
+    home_account_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+
+
 class MicrosoftAuthorizationFlowModel(Base):
     """Single-use, encrypted authorization-code flow state."""
 
@@ -607,6 +622,7 @@ class RuntimeControlModel(TimestampMixin, Base):
     workflow_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     calendar_write_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     daily_brief_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    daily_brief_recipient: Mapped[str | None] = mapped_column(String(254))
     version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -639,7 +655,7 @@ class OperationRunModel(TimestampMixin, Base):
         ),
         CheckConstraint(
             "operation_type IN ('mail_sync', 'process_email', 'process_pending', "
-            "'reset_mail_cursor')",
+            "'reset_mail_cursor', 'send_daily_brief')",
             name="operation_type_valid",
         ),
         CheckConstraint(
@@ -651,7 +667,7 @@ class OperationRunModel(TimestampMixin, Base):
             "AND batch_limit IS NULL) OR "
             "(operation_type = 'process_pending' AND source_email_id IS NULL "
             "AND batch_limit IS NOT NULL) OR "
-            "(operation_type IN ('mail_sync', 'reset_mail_cursor') "
+            "(operation_type IN ('mail_sync', 'reset_mail_cursor', 'send_daily_brief') "
             "AND source_email_id IS NULL AND batch_limit IS NULL)",
             name="operation_parameters_match_type",
         ),

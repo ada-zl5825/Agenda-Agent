@@ -36,7 +36,14 @@ async def test_brief_preview_requires_the_authenticated_microsoft_connection() -
         follow_redirects=False,
     ) as client:
         unauthenticated = await client.get("/brief/today")
-        client.cookies.set(manager.cookie_name, manager.issue(account_id))
+        client.cookies.set(
+            manager.cookie_name,
+            manager.issue(
+                account_id,
+                admin_home_account_id="admin-account",
+                admin_tenant_id=None,
+            ),
+        )
         authenticated = await client.get("/brief/today")
 
     assert unauthenticated.status_code == 303

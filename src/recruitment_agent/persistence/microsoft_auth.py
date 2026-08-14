@@ -11,12 +11,15 @@ from recruitment_agent.application.errors import (
     AuthenticationFailedError,
     TokenCacheConflictError,
 )
+from recruitment_agent.domain.mail import MailSyncStatus
 from recruitment_agent.microsoft.auth_contracts import (
     StoredAuthorizationFlow,
     TokenCacheSnapshot,
 )
 from recruitment_agent.microsoft.crypto import EncryptedPayload
 from recruitment_agent.persistence.models import (
+    AdminIdentityModel,
+    MailSyncStateModel,
     MicrosoftAuthorizationFlowModel,
     MicrosoftConnectionModel,
 )
@@ -71,23 +74,36 @@ class SqlAlchemyMicrosoftAuthStore:
     ) -> int:
         next_revision = expected_revision + 1
         async with self._session_factory.begin() as session:
-            result = await session.execute(
-                update(MicrosoftConnectionModel)
-                .where(
-                    MicrosoftConnectionModel.id == connection_id,
-                    MicrosoftConnectionModel.token_cache_revision == expected_revision,
-                )
-                .values(
-                    token_cache_ciphertext=encrypted_cache.ciphertext,
-                    token_cache_nonce=encrypted_cache.nonce,
-                    token_cache_key_version=encrypted_cache.key_version,
-                    token_cache_revision=next_revision,
-                    home_account_id=home_account_id,
-                    tenant_id=tenant_id,
-                )
+            model = await session.scalar(
+                select(MicrosoftConnectionModel)
+                .where(MicrosoftConnectionModel.id == connection_id)
+                .with_for_update()
             )
-            if getattr(result, "rowcount", 0) != 1:
+            if model is None or model.token_cache_revision != expected_revision:
                 raise TokenCacheConflictError("Microsoft token cache changed concurrently")
+            account_changed = (
+                model.home_account_id is not None
+                and home_account_id is not None
+                and model.home_account_id != home_account_id
+            )
+            model.token_cache_ciphertext = encrypted_cache.ciphertext
+            model.token_cache_nonce = encrypted_cache.nonce
+            model.token_cache_key_version = encrypted_cache.key_version
+            model.token_cache_revision = next_revision
+            model.home_account_id = home_account_id
+            model.tenant_id = tenant_id
+            if account_changed:
+                await session.execute(
+                    update(MailSyncStateModel)
+                    .where(MailSyncStateModel.account_id == connection_id)
+                    .values(
+                        delta_link=None,
+                        last_sync_started_at=None,
+                        last_sync_finished_at=None,
+                        status=MailSyncStatus.IDLE.value,
+                        error_code=None,
+                    )
+                )
         return next_revision
 
     async def save_authorization_flow(self, flow: StoredAuthorizationFlow) -> None:
@@ -128,3 +144,15 @@ class SqlAlchemyMicrosoftAuthStore:
                 ),
                 expires_at=model.expires_at,
             )
+
+    async def is_admin_identity_allowed(
+        self,
+        *,
+        home_account_id: str,
+        tenant_id: str | None,
+    ) -> bool:
+        async with self._session_factory() as session:
+            model = await session.get(AdminIdentityModel, home_account_id)
+        if model is None or not model.enabled:
+            return False
+        return model.tenant_id is None or model.tenant_id == tenant_id

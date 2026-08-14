@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from recruitment_agent.domain.recipient import normalize_recipient_address
+
 
 class AppEnvironment(StrEnum):
     """Supported runtime environments."""
@@ -89,6 +91,7 @@ class MicrosoftSettings(BaseSettings):
     microsoft_tenant: str = "consumers"
     microsoft_redirect_uri: AnyHttpUrl
     microsoft_connection_id: UUID
+    admin_microsoft_home_account_id: str | None = None
 
     token_cache_encryption_key: SecretStr = Field(repr=False)
     token_cache_encryption_key_version: str = "v1"
@@ -169,16 +172,25 @@ class MicrosoftSettings(BaseSettings):
             return None
         return value
 
+    @field_validator("admin_microsoft_home_account_id", mode="before")
+    @classmethod
+    def normalize_optional_admin_identity(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            if len(normalized) > 255 or any(character.isspace() for character in normalized):
+                raise ValueError("ADMIN_MICROSOFT_HOME_ACCOUNT_ID is invalid")
+            return normalized
+        return value
+
     @model_validator(mode="after")
     def validate_phase_eight_settings(self) -> "MicrosoftSettings":
         if self.daily_brief_enabled and (
-            self.daily_brief_recipient is None
-            or self.public_app_base_url is None
-            or self.web_session_signing_key is None
+            self.public_app_base_url is None or self.web_session_signing_key is None
         ):
             raise ValueError(
-                "DAILY_BRIEF_RECIPIENT, PUBLIC_APP_BASE_URL, and "
-                "WEB_SESSION_SIGNING_KEY are required when enabled"
+                "PUBLIC_APP_BASE_URL and WEB_SESSION_SIGNING_KEY are required when enabled"
             )
         if (
             self.web_session_signing_key is not None
@@ -195,10 +207,12 @@ class MicrosoftSettings(BaseSettings):
                 "WEB_SESSION_SIGNING_KEY must not reuse TOKEN_CACHE_ENCRYPTION_KEY"
             )
         if self.daily_brief_recipient is not None:
-            recipient = self.daily_brief_recipient.strip()
-            if "@" not in recipient or any(char.isspace() for char in recipient):
-                raise ValueError("DAILY_BRIEF_RECIPIENT must be an email address")
-            self.daily_brief_recipient = recipient
+            try:
+                self.daily_brief_recipient = normalize_recipient_address(
+                    self.daily_brief_recipient
+                )
+            except ValueError as exc:
+                raise ValueError("DAILY_BRIEF_RECIPIENT must be an email address") from exc
         return self
 
     @property

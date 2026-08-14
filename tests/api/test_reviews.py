@@ -101,7 +101,11 @@ async def test_review_pages_require_session_and_post_requires_bound_csrf() -> No
         follow_redirects=False,
     ) as client:
         unauthenticated = await client.get(f"/reviews/{review_id}")
-        session = manager.issue(account_id)
+        session = manager.issue(
+            account_id,
+            admin_home_account_id="admin-account",
+            admin_tenant_id=None,
+        )
         client.cookies.set(manager.cookie_name, session)
         page = await client.get(f"/reviews/{review_id}")
         rejected = await client.post(

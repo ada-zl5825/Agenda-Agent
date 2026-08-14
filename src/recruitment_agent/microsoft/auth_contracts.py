@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -11,6 +12,11 @@ from msal import SerializableTokenCache
 from recruitment_agent.microsoft.crypto import EncryptedPayload
 
 JsonObject = dict[str, Any]
+
+
+class AuthorizationPurpose(StrEnum):
+    ADMIN_LOGIN = "admin_login"
+    MAILBOX_CONNECTION = "mailbox_connection"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -40,6 +46,8 @@ class AuthorizationStart:
 class AuthorizationCompletion:
     connection_id: UUID
     home_account_id: str
+    tenant_id: str | None
+    purpose: AuthorizationPurpose
 
 
 class MicrosoftAuthStore(Protocol):
@@ -65,6 +73,13 @@ class MicrosoftAuthStore(Protocol):
         state_hash: str,
         consumed_at: datetime,
     ) -> StoredAuthorizationFlow: ...
+
+    async def is_admin_identity_allowed(
+        self,
+        *,
+        home_account_id: str,
+        tenant_id: str | None,
+    ) -> bool: ...
 
 
 class MsalClient(Protocol):

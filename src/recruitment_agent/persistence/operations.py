@@ -63,6 +63,7 @@ class SqlAlchemyOperationsStore:
                         defaults.calendar_write_enabled and defaults.workflow_enabled
                     ),
                     daily_brief_enabled=defaults.daily_brief_enabled,
+                    daily_brief_recipient=defaults.daily_brief_recipient,
                     version=1,
                     reason=ControlReason.MANUAL.value,
                     updated_by="bootstrap",
@@ -74,6 +75,12 @@ class SqlAlchemyOperationsStore:
             model = await session.get(RuntimeControlModel, account_id)
             if model is None:
                 raise RuntimeError("runtime control could not be initialized")
+            if (
+                model.daily_brief_recipient is None
+                and defaults.daily_brief_recipient is not None
+            ):
+                model.daily_brief_recipient = defaults.daily_brief_recipient
+                await session.flush()
             return self._to_control(model)
 
     async def update_control(
@@ -102,6 +109,8 @@ class SqlAlchemyOperationsStore:
                 model.calendar_write_enabled = patch.calendar_write_enabled
             if patch.daily_brief_enabled is not None:
                 model.daily_brief_enabled = patch.daily_brief_enabled
+            if patch.daily_brief_recipient is not None:
+                model.daily_brief_recipient = patch.daily_brief_recipient
             if model.calendar_write_enabled and not model.workflow_enabled:
                 raise OperationConflictError("calendar writes require workflow processing")
             model.version += 1
@@ -524,6 +533,7 @@ class SqlAlchemyOperationsStore:
             workflow_enabled=model.workflow_enabled,
             calendar_write_enabled=model.calendar_write_enabled,
             daily_brief_enabled=model.daily_brief_enabled,
+            daily_brief_recipient=model.daily_brief_recipient,
             version=model.version,
             reason=ControlReason(model.reason),
             updated_by=model.updated_by,
