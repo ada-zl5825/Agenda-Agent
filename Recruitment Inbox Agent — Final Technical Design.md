@@ -4072,3 +4072,114 @@ Secure Action Link Delivery
 ```
 
 这就是 Recruitment Inbox Agent V1 的最终工程基线。
+
+# 86. 可靠性修订(2026-08-14)— 关键设计决策
+
+本章记录首次生产运行暴露的缺陷所对应的设计修订。所有决策均已实现并有回归测试;
+小节内的章节引用指向本文档既有章节。
+
+## 86.1 操作队列传输契约
+
+Azure Functions 主机默认以 `MessageEncoding=Base64` 解码队列消息,而 Python
+`azure-storage-queue` v12 默认发送纯文本。生产者(`operations/azure_queue.py`)
+显式使用 `TextBase64EncodePolicy`,与主机默认对齐;队列触发器绑定字面量队列名
+`recruitment-operations`(Flex Consumption 缩放控制器不解析 `%app-setting%` 占位符)。
+
+Flex Consumption 从零唤醒队列 worker 曾不可靠,因此每分钟的 dispatch 定时器同时
+承担兜底执行:重新入队之后**内联执行**到期操作。两条执行路径靠
+`operation_runs` 的租约(`claim_operation`,25 分钟)串行化;认领即递增
+`attempt_count`,5 次封顶。兜底循环有 240 秒时间盒(远低于主机 30 分钟超时),
+新提交的操作有 30 秒滞留期,把低延迟路径留给队列 worker。
+
+## 86.2 Daily Brief 投递语义(修订 §57)
+
+每日投递审计行是唯一的至多一次屏障,其认领规则为:
+
+- `dispatching`(10 分钟租约内)= 独占,并发认领一律拒绝——修复了
+  `attempt_count` 从不递增导致的重复发送缺陷;
+- `dispatching` 超过租约 = 视为崩溃的投递,**封存为 `uncertain`**
+  (`BRIEF_DISPATCH_ABANDONED`),绝不自动重发(Graph 结果未知);
+- `failed`(确定未发出)= 允许当天有界重试,总认领次数上限 3;
+- `accepted` / `uncertain` = 当日终态。
+
+定时器门控由"本地小时精确相等"改为"本地投递时点已过"(`is_daily_brief_due`,
+`>=` 比较):迟到的 tick、夏令时不存在的小时不再造成整天漏发;至多一次由认领保证,
+不由门控保证。`sendMail` 的连接建立失败(DNS / connect timeout / pool timeout)
+归类为**确定未送达**的可重试失败;仅请求可能已到达服务端的错误(读超时、5xx)
+保持 `uncertain` 不重试。
+
+## 86.3 邮件同步韧性(修订 §9/§10/§60)
+
+- **每页即提交**:每个 delta 页与其 `nextLink` 游标在同一事务落库。超大邮箱不再
+  受单次调用页预算限制(预算耗尽抛可续跑的 `SYNC_PAGE_LIMIT`,下次从断点继续),
+  中断不丢进度,内存不随邮箱体积增长。
+- **同步租约**:`mail_sync_states` 上 10 分钟租约,定时器与手动操作不再并发交错;
+  碰撞方收到 `SYNC_IN_PROGRESS`(调度路径静默跳过,操作路径按既有有界重试)。
+- **410 自恢复**:delta 游标失效(`DELTA_STATE_INVALID`)时清空游标,下一轮自动
+  全量重新枚举——与 Microsoft 文档建议一致;人工 `reset_mail_cursor` 仅保留为
+  显式运维手段。
+- 非 `ApplicationError` 异常同样把状态标记为 `failed`(不再卡在 `syncing`);
+  `Retry-After` 为 HTTP 日期且响应缺 `Date` 头时以当前 UTC 计算退避,不再塌缩为 0;
+  单条无法解析的消息跳过并仅记录不透明 Graph 消息 ID,不阻塞整轮。
+
+## 86.4 工作流与评审语义(修订 §12/§15/§34/§39)
+
+- **`needs_review` 邮件状态**:工作流中断即标记,和"正在处理"明确区分;
+  等待人工的邮件不会被重试认领或 `process_pending` 抢走。
+- **已完成运行不可重入**:runner 启动前读取运行状态,`completed/ignored/failed`
+  直接返回既有结果;`start_run` 的源邮件更新永不把 `processed/ignored` 回置。
+- **时区评审重绑定**:人工选定 IANA 时区后,抽取出的挂钟时间(包括模型臆造偏移的
+  aware 值)按所选时区**重绑定**——评审改变绝对时间,而不只是标签。
+- **评审后仍不可解析的时间显式失败**:`plan_state_transition` 在
+  `mutations_allowed=False` 时抛 `TimeEvidenceUnresolvedError`(错误码即原因,如
+  `EVENT_DATETIME_UNRESOLVED`),运行标 FAILED、控制台可见——禁止"评审成功但
+  面试凭空消失"的静默完成。
+- **终态不互翻**:`REJECTED ↔ OFFER` 不允许由后续邮件自动翻转;任何终态变更都
+  必须是人工决策。
+- **未归一化角色不自动挂载**:邮件写明角色但归一化失败时,即使公司只有一个开放
+  申请也进入 `APPLICATION_AMBIGUITY` 评审(`unnormalized_role_ambiguous`);
+  完全无角色的邮件(如拒信)保留单申请自动挂载。
+- **恢复路径服从运行时开关**:评审恢复通过 `read_calendar_write_control()` 读取
+  数据库 `calendar_write_enabled`,与启动路径同源;组合层判定收紧为
+  `calendar_write_enabled is True`(fail-closed)。
+
+## 86.5 认证并发
+
+MSAL 静默刷新的乐观锁(`token_cache_revision`)失败方**不再失败整个任务**:
+它手中的 access token 仍然有效,跳过本次缓存写入即可(赢家已持久化更新的
+refresh token)。交互式授权路径的冲突仍然向上传播。
+
+## 86.6 Web 传输加固
+
+匿名 `/openapi.json` 关闭;Brief 中解密后的第三方链接携带
+`rel="noreferrer noopener"` 与 `referrerpolicy="no-referrer"`(防 Referer 泄漏
+带密 URL);`APP_ENV=production` 时会话 cookie 无条件 `Secure`(不信任代理呈现的
+scheme);新增 `POST /auth/logout`;评审表单对非 UTF-8 载荷返回重定向而非 500。
+
+# 87. 评审后有意保留的设计(Accepted Trade-offs)
+
+以下设计在 2026-08-14 全量缺陷评审中被识别、评估,并**有意不改**。
+再次评审时请先阅读本章,避免重复分析。
+
+- **邮件不启用 `Prefer: IdType="ImmutableId"`**。切换 ID 语义会使已存
+  `graph_message_id` 全部失配,触发整箱重摄取与重复处理。接受的残余风险:邮箱
+  迁移/恢复后同一封邮件可能以新 ID 二次摄取(单用户专用求职邮箱,概率极低)。
+  若未来必须切换,需要一次性迁移:清空 delta 游标 + 以 `internet_message_id`
+  为辅键去重。日历客户端保持 ImmutableId 不变。
+- **`DATETIME_CONFLICT` 评审路径在生产不可达**。`TIMEZONE_CONFLICT`(模型自相
+  矛盾的时区断言)是 ERROR 级校验,fail-closed 直接判 `LLM_SCHEMA_INVALID`,
+  不进入评审;`use_extracted` 选项因此无效。保留死路径而非改造:让模型自相矛盾
+  的输出失败可见,优于引导人工"信任冲突证据"。
+- **日历"先建事件、后存链接"的窗口**。Graph `transactionId` 以语义指纹为键,
+  同指纹重建幂等;仅当落库失败且随后指纹变化时可能产生重复占位事件。修复需要
+  两阶段提交,复杂度不成比例;残余风险接受,靠人工日历清理兜底。
+  `replace_missing` 同理不主动删除旧事件(404 误报时删除真事件的风险更高)。
+- **无服务端会话吊销存储**。会话是纯 HMAC 签名 cookie(TTL 8 小时),吊销手段为
+  登出端点 + 轮换 `WEB_SESSION_SIGNING_KEY`。单管理员部署下引入会话表的收益
+  不足;allowlist 变更在下次登录时生效。
+- **dispatch 兜底逐操作新建 DB 引擎/队列客户端**。串行执行下连接数安全,仅是
+  延迟开销;共享资源生命周期管理的复杂度当前不值得。
+- **兜底与队列 worker 的重复消息**。30 秒滞留期减少但不消除重复投递;剩余重复
+  由租约吸收为无害 no-op,不引入去重表。
+- **`uncertain` 的 Brief 永不自动重试**。可能造成当日漏发,但重复邮件的代价
+  高于漏发(人工可随时手动补发);这是刻意的至多一次取舍。

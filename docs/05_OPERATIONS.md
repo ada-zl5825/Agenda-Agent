@@ -142,12 +142,18 @@ from the same VNet-connected environment:
 uv run seed-companies
 ```
 
-The seed command currently loads 35 reviewed common employers using stable UUIDs and exact
-aliases/domains. It does not call external services, perform fuzzy matching, create companies from
-observed mail or replace manually reviewed companies. Run it after every catalog update; repeated
-execution updates the same seed-owned records without creating duplicates. The operation is
-additive: removing an alias or domain from the source catalog does not delete the existing database
-record, so retirement requires a separate reviewed catalog mutation.
+The seed command currently loads 122 reviewed employers using stable UUIDs and exact
+aliases/domains, including a reviewed catalog of 100 mainstream China internet majors
+(`CHINA_INTERNET_MAJOR_SEEDS` plus the 13 China entries in the foundation catalog). It does not
+call external services, perform fuzzy matching, create companies from observed mail or replace
+manually reviewed companies. Run it after every catalog update; repeated execution updates the
+same seed-owned records without creating duplicates. The operation is additive: removing an alias
+or domain from the source catalog does not delete the existing database record, so retirement
+requires a separate reviewed catalog mutation. After deploying a catalog expansion, re-run:
+
+```text
+./scripts/start-database-maintenance.ps1 -Operation seed-companies
+```
 
 Future timers and external calls must be idempotent, timeout-bounded and retry-bounded.
 
@@ -340,6 +346,58 @@ succeeded:
 ```text
 ./scripts/start-database-maintenance.ps1 -Operation migrate
 ```
+
+## Reliability runbook (2026-08-14 revision)
+
+Design chapter 86 of the canonical design document records the reliability decisions behind this
+runbook; chapter 87 records the reviewed-and-accepted trade-offs. Operational consequences:
+
+- **Mail sync**: a `SYNC_IN_PROGRESS` failure code on a manual operation means a concurrent
+  synchronization held the 10-minute lease; the operation retries automatically. A
+  `DELTA_STATE_INVALID` failure clears the cursor itself; the next scheduled run performs a full
+  resync without manual `reset-mail-cursor`. `SYNC_PAGE_LIMIT` is progress-preserving: the next
+  run continues from the committed cursor.
+- **Daily Brief**: `BRIEF_DISPATCH_ABANDONED` marks a crashed in-flight dispatch that was closed
+  as `uncertain`; it is never retried automatically because the Graph outcome is unknown. Confirm
+  in the mailbox Sent Items whether the brief left, then decide manually. A `failed` brief retries
+  automatically the same local day (three claims maximum), including late catch-up ticks after the
+  configured local hour.
+- **Source emails**: `needs_review` is a first-class processing status meaning "waiting on a
+  human"; such emails are excluded from retries and `process-pending` batches until their review
+  is resolved. A run failing with `EVENT_DATETIME_UNRESOLVED` (or a sibling `*_UNRESOLVED` code)
+  means the model could not produce a usable event time even after review; handle the email
+  manually from its Outlook link.
+
+### One-time cleanup after the Base64 queue fix
+
+Messages sent before the Base64 producer fix are permanently undecodable and were moved to the
+poison queue. They contain only opaque operation UUIDs, so clearing them is safe. From an
+authenticated Azure CLI session:
+
+```powershell
+$rg = "rg-agenda-agent-prod-uks"
+$account = az storage account list -g $rg --query "[0].name" -o tsv
+az storage message clear --queue-name recruitment-operations-poison `
+  --account-name $account --auth-mode login
+```
+
+### Verifying queue-worker scale-out
+
+The dispatch timer executes due operations inline as a scale fallback, so the console works even
+when the queue trigger never fires. To confirm whether the queue path recovered after the Base64
+fix, check Application Insights for `operations_queue_worker` invocations:
+
+```text
+requests
+| where timestamp > ago(24h)
+| where operation_Name == "operations_queue_worker"
+| summarize count(), max(timestamp)
+```
+
+If invocations appear, the queue trigger is the low-latency path again and the timer fallback only
+handles stragglers. If none appear after submitting a manual operation, operations still complete
+through the fallback within roughly one minute; investigate the Flex Consumption scale controller
+before removing the fallback.
 
 ## Phase 3 key handling
 
