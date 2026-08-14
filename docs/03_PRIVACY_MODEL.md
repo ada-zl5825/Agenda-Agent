@@ -1,4 +1,4 @@
-# Privacy Model through Phase 7
+# Privacy Model
 
 Phases 2 and 3 implement the deterministic privacy boundary. Phase 4 consumes only its safe output,
 and Phases 5/6 checkpoint only the reduced privacy-safe workflow state and typed domain intent.
@@ -82,3 +82,9 @@ opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`
 - Graph Calendar responses are reduced immediately to an opaque immutable event ID. Graph error
   bodies and event descriptions are not logged or checkpointed; graph state retains only the
   operation and a stable privacy-safe reason.
+- Phase 8 Review HTML never decrypts action links. Daily Brief decrypts ordinary action links only
+  at the final render boundary. `daily_briefs` stores send status and a safe error code, not
+  rendered HTML, recipients, or plaintext URLs.
+- Phase 9A `/agent` and `/api/v1/ops` expose aggregate counts, readiness, and opaque operation IDs.
+  They never render message IDs, subjects, bodies, OAuth credentials, decrypted links, prompts, or
+  model completions. The Daily Brief recipient is visible only to an authenticated administrator.

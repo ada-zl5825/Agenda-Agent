@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Privacy-preserving recruitment inbox workflow agent"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-license = { text = "Proprietary" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Theo" }]
 dependencies = [
   "aiohttp>=3.12,<4",

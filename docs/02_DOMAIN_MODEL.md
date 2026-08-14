@@ -1,4 +1,4 @@
-# Domain Model through Phase 7
+# Domain Model
 
 `Application` remains the recruitment aggregate root. `RecruitmentEvent` and `ActionItem` belong to
 an application and use explicit status enums. Email and future model output are evidence, not domain
@@ -122,3 +122,10 @@ update the same linked Calendar event rather than creating another event.
 
 Calendar duration is explicitly a configurable placeholder (60 minutes for interviews, 30 minutes
 at assessment deadlines by default), never an inferred assessment or interview duration.
+
+## Phase 8 and 9A (read models, not new aggregates)
+
+Daily Brief and the Agent console do not introduce a second recruitment aggregate. They read
+`Application`, `RecruitmentEvent`, `ActionItem`, and `review_items`, then render or send. Brief
+dispatch is claimed at most once per account and local date. Operation runs and runtime controls
+are operational state; they must not become a second source of truth for application status.

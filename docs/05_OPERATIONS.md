@@ -294,8 +294,13 @@ scoped deployment identity, its GitHub OIDC federated credential, a Microsoft ap
 registration, and the GitHub `production` environment configuration:
 
 ```powershell
-./scripts/bootstrap-azure.ps1 -ResourceGroupName "rg-agenda-agent-prod-uks"
+./scripts/bootstrap-azure.ps1 `
+  -ResourceGroupName "<resource-group>" `
+  -GitHubRepository "<owner>/<repo>"
 ```
+
+The script defaults currently point at this repository's private production names. Pass both
+parameters explicitly when bootstrapping any other subscription or GitHub repository.
 
 The command requires Azure CLI and GitHub CLI authentication. It generates all application secrets
 locally and writes them directly to GitHub environment secrets. Re-running the command rotates the
@@ -390,7 +395,7 @@ poison queue. They contain only opaque operation UUIDs, so clearing them is safe
 authenticated Azure CLI session:
 
 ```powershell
-$rg = "rg-agenda-agent-prod-uks"
+$rg = "<resource-group>"
 $account = az storage account list -g $rg --query "[0].name" -o tsv
 az storage message clear --queue-name recruitment-operations-poison `
   --account-name $account --auth-mode login
