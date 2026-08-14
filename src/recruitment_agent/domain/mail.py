@@ -19,6 +19,9 @@ class MailSyncStatus(StrEnum):
 class SourceEmailProcessingStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
+    #: The workflow interrupted for a human decision; the email is waiting on a
+    #: review and must not be reclaimed by retries or pending-batch operations.
+    NEEDS_REVIEW = "needs_review"
     PROCESSED = "processed"
     IGNORED = "ignored"
     FAILED = "failed"

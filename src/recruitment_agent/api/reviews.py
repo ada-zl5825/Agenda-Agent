@@ -78,7 +78,11 @@ async def resolve_review(
     raw_body = await request.body()
     if len(raw_body) > 16_384:
         return RedirectResponse(f"/reviews/{review_id}", status_code=303)
-    form = parse_qs(raw_body.decode("utf-8"), keep_blank_values=True)
+    try:
+        decoded_body = raw_body.decode("utf-8")
+    except UnicodeDecodeError:
+        return RedirectResponse(f"/reviews/{review_id}", status_code=303)
+    form = parse_qs(decoded_body, keep_blank_values=True)
     choice = form.get("choice", [""])[0]
     override = form.get("override_value", [""])[0].strip() or None
     csrf = form.get("csrf_token", [""])[0]

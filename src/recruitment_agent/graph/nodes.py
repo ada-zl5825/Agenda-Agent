@@ -4,10 +4,12 @@ import re
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 
+from recruitment_agent.application.errors import TimeEvidenceUnresolvedError
 from recruitment_agent.calendar.models import CalendarSyncRequest
 from recruitment_agent.domain.processing import (
     ApplicationResolution,
@@ -472,7 +474,19 @@ def _domain_evidence(state: RecruitmentGraphState) -> RecruitmentEvidence:
         else None if result.company is None else result.company.company_id
     )
     timezone = state.get("reviewed_timezone")
-    if timezone is None and extraction.timezone_explicit:
+    event_datetime = extraction.event_datetime
+    deadline = extraction.deadline
+    if timezone is not None:
+        # A human resolved the ambiguous timezone. The extracted values carry
+        # the email's wall-clock time with an unknown or invented offset, so
+        # rebind that wall-clock reading to the reviewed IANA zone; otherwise
+        # the label changes while the absolute instant stays wrong.
+        zone = ZoneInfo(timezone)
+        if event_datetime is not None:
+            event_datetime = event_datetime.replace(tzinfo=zone)
+        if deadline is not None:
+            deadline = deadline.replace(tzinfo=zone)
+    elif extraction.timezone_explicit:
         timezone = extraction.timezone_text
     return RecruitmentEvidence(
         source_email_id=_source_email_id(state),
@@ -485,8 +499,8 @@ def _domain_evidence(state: RecruitmentGraphState) -> RecruitmentEvidence:
         action_required=extraction.action_required,
         action_text=extraction.action_text,
         action_link_ref=extraction.action_link_ref,
-        event_datetime=extraction.event_datetime,
-        deadline=extraction.deadline,
+        event_datetime=event_datetime,
+        deadline=deadline,
         timezone=timezone,
         source_datetime_text=extraction.source_datetime_text,
         source_deadline_text=extraction.source_deadline_text,
@@ -586,6 +600,10 @@ async def plan_state_transition(
         ApplicationResolution.model_validate(state["application_resolution"]),
         EventResolution.model_validate(state["event_resolution"]),
     )
+    if not plan.mutations_allowed:
+        # Completing "successfully" here would silently drop the email's
+        # interview or deadline. Fail visibly instead so the operator can act.
+        raise TimeEvidenceUnresolvedError(plan.no_mutation_reason or "time_unresolved")
     return {
         "current_stage": stage.value,
         "transition_plan": plan.model_dump(mode="json"),

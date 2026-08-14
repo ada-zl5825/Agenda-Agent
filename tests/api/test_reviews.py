@@ -85,6 +85,39 @@ class Reviews:
 
 
 @pytest.mark.asyncio
+async def test_non_utf8_review_form_redirects_instead_of_crashing() -> None:
+    """Regression: a malformed body must not surface as an unhandled 500."""
+    account_id = uuid4()
+    review_id = uuid4()
+    manager = WebSessionManager(key=b"s" * 32, clock=Clock())
+    reviews = Reviews(detail(account_id, review_id))
+    application = create_app()
+    application.dependency_overrides[get_web_session_manager] = lambda: manager
+    application.dependency_overrides[get_review_service] = lambda: reviews
+    transport = httpx.ASGITransport(app=application)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://agent.example",
+        follow_redirects=False,
+    ) as client:
+        session = manager.issue(
+            account_id,
+            admin_home_account_id="admin-account",
+            admin_tenant_id=None,
+        )
+        client.cookies.set(manager.cookie_name, session)
+        response = await client.post(
+            f"/reviews/{review_id}/resolve",
+            content=b"choice=\xff\xfe",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    assert response.status_code == 303
+    assert reviews.resolutions == []
+
+
+@pytest.mark.asyncio
 async def test_review_pages_require_session_and_post_requires_bound_csrf() -> None:
     account_id = uuid4()
     review_id = uuid4()

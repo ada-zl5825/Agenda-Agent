@@ -1,5 +1,6 @@
 """Thin HTTP transport for delegated Microsoft authorization."""
 
+import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
@@ -10,6 +11,7 @@ from recruitment_agent.api.dependencies import (
     get_web_session_manager,
 )
 from recruitment_agent.application.errors import ReviewAuthenticationError
+from recruitment_agent.config.settings import AppEnvironment
 from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
 from recruitment_agent.microsoft.auth_contracts import AuthorizationPurpose
 from recruitment_agent.web.security import WebSessionManager
@@ -20,6 +22,14 @@ AuthorizationService = Annotated[
     Depends(get_authorization_service),
 ]
 SessionManager = Annotated[WebSessionManager, Depends(get_web_session_manager)]
+
+
+def _secure_cookie(request: Request) -> bool:
+    """Never issue an insecure session cookie from a production deployment,
+    even when a proxy presents the request as plain HTTP."""
+    if os.getenv("APP_ENV", "").strip().lower() == AppEnvironment.PRODUCTION.value:
+        return True
+    return request.url.scheme == "https"
 
 
 @router.get("/login", response_class=RedirectResponse)
@@ -38,7 +48,7 @@ async def login(
         sessions.return_cookie_name,
         sessions.issue_return_path(return_to),
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_secure_cookie(request),
         samesite="lax",
         max_age=600,
         path="/auth",
@@ -73,11 +83,19 @@ async def connect_mailbox(
         sessions.return_cookie_name,
         sessions.issue_return_path(return_to),
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_secure_cookie(request),
         samesite="lax",
         max_age=600,
         path="/auth",
     )
+    return response
+
+
+@router.post("/logout", response_class=RedirectResponse)
+async def logout(sessions: SessionManager) -> RedirectResponse:
+    """Drop the signed browser session so a shared machine can be released."""
+    response = RedirectResponse(url="/auth/login", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(sessions.cookie_name, path="/")
     return response
 
 
@@ -116,7 +134,7 @@ async def callback(
                 admin_tenant_id=result.tenant_id,
             ),
             httponly=True,
-            secure=request.url.scheme == "https",
+            secure=_secure_cookie(request),
             samesite="lax",
             max_age=sessions.cookie_max_age,
             path="/",

@@ -74,6 +74,13 @@ class WorkflowPersistence(Protocol):
 
     async def start_run(self, run: ProcessingRun) -> None: ...
 
+    async def get_run_status(
+        self,
+        processing_run_id: UUID,
+    ) -> ProcessingRunStatus | None: ...
+
+    async def mark_source_needs_review(self, source_email_id: UUID) -> None: ...
+
     async def advance_run(
         self,
         *,

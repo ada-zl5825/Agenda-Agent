@@ -2,7 +2,9 @@
 
 import asyncio
 import hashlib
+import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urlparse
 from uuid import UUID
@@ -22,6 +24,8 @@ from recruitment_agent.microsoft.auth_contracts import AccessTokenProvider
 from recruitment_agent.microsoft.graph_models import GraphDeltaResponse, GraphMessage
 
 Sleep = Callable[[float], Awaitable[None]]
+
+LOGGER = logging.getLogger(__name__)
 
 
 class GraphMailClient:
@@ -76,15 +80,23 @@ class GraphMailClient:
         )
         try:
             payload = GraphDeltaResponse.model_validate(response.json())
-            messages = tuple(
-                self._to_candidate(message)
-                for message in payload.value
-                if message.removed is None
-            )
         except (ValueError, ValidationError) as exc:
             raise GraphFetchError("Graph returned an invalid mail delta payload") from exc
+        messages: list[SourceEmailCandidate] = []
+        for message in payload.value:
+            if message.removed is not None:
+                continue
+            try:
+                messages.append(self._to_candidate(message))
+            except ValueError:
+                # One malformed item must not wedge the whole delta stream.
+                # Only the opaque Graph identifier is logged; never content.
+                LOGGER.warning(
+                    "graph_delta_message_skipped",
+                    extra={"graph_message_id": message.id},
+                )
         return MailDeltaPage(
-            messages=messages,
+            messages=tuple(messages),
             next_link=payload.next_link,
             delta_link=payload.delta_link,
         )
@@ -187,7 +199,12 @@ class GraphMailClient:
                 except ValueError:
                     try:
                         retry_at = parsedate_to_datetime(raw_retry_after)
-                        now = parsedate_to_datetime(response.headers.get("Date", raw_retry_after))
+                        date_header = response.headers.get("Date")
+                        now = (
+                            parsedate_to_datetime(date_header)
+                            if date_header is not None
+                            else datetime.now(UTC)
+                        )
                         delay = max(0.0, (retry_at - now).total_seconds())
                     except (TypeError, ValueError, OverflowError):
                         delay = 2.0**attempt

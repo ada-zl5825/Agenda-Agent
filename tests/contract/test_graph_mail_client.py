@@ -158,6 +158,63 @@ async def test_throttling_obeys_retry_after_and_transient_failure_retries() -> N
 
 
 @pytest.mark.asyncio
+@respx.mock
+async def test_one_malformed_message_is_skipped_without_wedging_the_page() -> None:
+    """Regression: a single bad item must not block the whole delta stream."""
+    endpoint = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta"
+    broken = dict(message_payload())
+    broken["id"] = "graph-broken"
+    del broken["receivedDateTime"]
+    respx.get(endpoint).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "value": [broken, message_payload()],
+                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta-token",
+            },
+        )
+    )
+    async with httpx.AsyncClient() as http_client:
+        client = GraphMailClient(http_client=http_client, token_provider=TokenProvider())
+        page = await client.fetch_delta_page(account_id=uuid4(), folder_id="inbox", cursor=None)
+
+    assert [message.graph_message_id for message in page.messages] == ["graph-1"]
+    assert page.delta_link == "https://graph.microsoft.com/v1.0/delta-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_http_date_retry_after_without_date_header_still_backs_off() -> None:
+    """Regression: missing Date header must not collapse the wait to zero."""
+    from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
+
+    endpoint = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta"
+    retry_at = format_datetime(datetime.now(UTC) + timedelta(seconds=10), usegmt=True)
+    respx.get(endpoint).mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": retry_at}),
+            httpx.Response(200, json={"value": [], "@odata.deltaLink": endpoint}),
+        ]
+    )
+    delays: list[float] = []
+
+    async def record_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    async with httpx.AsyncClient() as http_client:
+        client = GraphMailClient(
+            http_client=http_client,
+            token_provider=TokenProvider(),
+            sleep=record_sleep,
+        )
+        await client.fetch_delta_page(account_id=uuid4(), folder_id="inbox", cursor=None)
+
+    assert len(delays) == 1
+    assert 5.0 <= delays[0] <= 12.0
+
+
+@pytest.mark.asyncio
 async def test_rejects_non_graph_delta_cursor_before_network_access() -> None:
     async with httpx.AsyncClient() as http_client:
         client = GraphMailClient(http_client=http_client, token_provider=TokenProvider())

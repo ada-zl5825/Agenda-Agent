@@ -120,6 +120,17 @@ class RecruitmentDomainService:
         if not candidates:
             return _new_application(evidence, reason="no_existing_application")
         if len(candidates) == 1:
+            if evidence.role_name is not None and evidence.role_normalized is None:
+                # The email names a role that could not be normalized, so the
+                # single open application may belong to a different role at the
+                # same company. Attaching automatically would corrupt history.
+                return ApplicationResolution(
+                    kind=ApplicationResolutionKind.REVIEW,
+                    application_id=None,
+                    current_status=None,
+                    candidate_application_ids=candidate_ids,
+                    reason="unnormalized_role_ambiguous",
+                )
             return _existing_application(candidates[0], reason="exact_company_role")
         return ApplicationResolution(
             kind=ApplicationResolutionKind.REVIEW,

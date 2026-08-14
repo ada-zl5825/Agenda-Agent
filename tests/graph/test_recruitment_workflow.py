@@ -4,11 +4,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from recruitment_agent.application.domain_processing import RecruitmentDomainService
+from recruitment_agent.application.errors import TimeEvidenceUnresolvedError
 from recruitment_agent.calendar.models import (
     CalendarSyncOperation,
     CalendarSyncRequest,
@@ -134,6 +136,8 @@ class FakeWorkflowPersistence:
         self.final_status: ProcessingRunStatus | None = None
         self.error_code: str | None = None
         self.error_detail: str | None = None
+        self.stored_run_status: ProcessingRunStatus | None = None
+        self.needs_review_marks: list[UUID] = []
 
     async def load_source_email(self, source_email_id: UUID) -> WorkflowSourceEmail:
         assert source_email_id == SOURCE_EMAIL_ID
@@ -146,6 +150,16 @@ class FakeWorkflowPersistence:
     async def start_run(self, run: ProcessingRun) -> None:
         self.runs.setdefault(run.id, run)
         self.stages.append(run.current_stage)
+
+    async def get_run_status(
+        self,
+        processing_run_id: UUID,
+    ) -> ProcessingRunStatus | None:
+        del processing_run_id
+        return self.stored_run_status
+
+    async def mark_source_needs_review(self, source_email_id: UUID) -> None:
+        self.needs_review_marks.append(source_email_id)
 
     async def advance_run(
         self,
@@ -395,6 +409,22 @@ def _request() -> WorkflowStartRequest:
     )
 
 
+def _ambiguous_time_result(
+    event_datetime: datetime | None,
+    *codes: ExtractionIssueCode,
+) -> WorkflowExtractionResult:
+    """Timezone-ambiguous interview evidence with a configurable wall clock."""
+    base = _result(
+        "interview_without_timezone",
+        validation=_validation(
+            ExtractionValidationStatus.NEEDS_REVIEW,
+            *(codes or (ExtractionIssueCode.TIMEZONE_AMBIGUOUS,)),
+        ),
+    )
+    extraction = base.extraction.model_copy(update={"event_datetime": event_datetime})
+    return base.model_copy(update={"extraction": extraction})
+
+
 @pytest.mark.asyncio
 async def test_happy_path_persists_phase_six_domain_plan() -> None:
     persistence = FakeWorkflowPersistence()
@@ -512,17 +542,15 @@ async def test_invalid_extraction_fails_before_placeholder_mutations() -> None:
 @pytest.mark.asyncio
 async def test_timezone_interrupt_rejects_invalid_choice_then_resumes() -> None:
     persistence = FakeWorkflowPersistence()
-    needs_timezone = _result(
-        "interview_without_timezone",
-        validation=_validation(
-            ExtractionValidationStatus.NEEDS_REVIEW,
-            ExtractionIssueCode.DATETIME_UNRESOLVED,
-            ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
-        ),
+    domain_store = FakeDomainStore()
+    needs_timezone = _ambiguous_time_result(
+        datetime(2026, 8, 20, 14, tzinfo=UTC),
+        ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
     )
     runner = _runner(
         FakeActivities(prepared=_prepared(), extraction=needs_timezone),
         persistence,
+        domain_store=domain_store,
     )
 
     interrupted = await runner.start(_request())
@@ -539,11 +567,62 @@ async def test_timezone_interrupt_rejects_invalid_choice_then_resumes() -> None:
 
     assert interrupted.interrupted
     assert interrupted.interrupt_payloads[0]["review_type"] == "TIMEZONE_AMBIGUITY"
+    assert persistence.needs_review_marks[0] == SOURCE_EMAIL_ID
     assert invalid.interrupted
     assert invalid.interrupt_payloads[0]["validation_error"] == "invalid_review_decision"
     assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
     assert len(persistence.reviews) == 1
     assert len(persistence.resolutions) == 1
+    # The reviewed timezone must rebind the extracted wall clock, not merely
+    # relabel it: 14:00 with an invented UTC offset becomes 14:00 London time.
+    assert domain_store.plans[0].event.starts_at == datetime(
+        2026, 8, 20, 14, tzinfo=ZoneInfo("Europe/London")
+    )
+    assert domain_store.plans[0].event.timezone == "Europe/London"
+
+
+@pytest.mark.asyncio
+async def test_unresolved_datetime_after_timezone_review_fails_visibly() -> None:
+    """Regression: a reviewed-but-unparseable interview time must not end as a
+    silently PROCESSED email with no interview and no calendar entry."""
+    persistence = FakeWorkflowPersistence()
+    needs_timezone = _ambiguous_time_result(
+        None,
+        ExtractionIssueCode.DATETIME_UNRESOLVED,
+        ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
+    )
+    runner = _runner(
+        FakeActivities(prepared=_prepared(), extraction=needs_timezone),
+        persistence,
+    )
+
+    interrupted = await runner.start(_request())
+    with pytest.raises(TimeEvidenceUnresolvedError):
+        await runner.resume(
+            processing_run_id=RUN_ID,
+            source_email_id=SOURCE_EMAIL_ID,
+            decision=ReviewDecision(choice="Europe/London"),
+        )
+
+    assert interrupted.interrupted
+    assert persistence.final_status is ProcessingRunStatus.FAILED
+    assert persistence.error_code == "EVENT_DATETIME_UNRESOLVED"
+
+
+@pytest.mark.asyncio
+async def test_finished_run_is_never_reexecuted_by_a_stale_retry() -> None:
+    """Regression: a lease-expired retry with the same run id must not drag a
+    PROCESSED email back through the graph."""
+    persistence = FakeWorkflowPersistence()
+    persistence.stored_run_status = ProcessingRunStatus.COMPLETED
+    activities = FakeActivities(prepared=_prepared(), extraction=_result())
+
+    outcome = await _runner(activities, persistence).start(_request())
+
+    assert outcome.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert not outcome.interrupted
+    assert activities.prepare_calls == 0
+    assert persistence.stages == []
 
 
 @pytest.mark.asyncio
@@ -683,13 +762,7 @@ async def test_conflicting_datetime_interrupt_resumes_through_typed_choice() -> 
 async def test_interrupt_survives_graph_reconstruction_with_same_checkpointer() -> None:
     memory = InMemorySaver()
     persistence = FakeWorkflowPersistence()
-    result = _result(
-        "interview_without_timezone",
-        validation=_validation(
-            ExtractionValidationStatus.NEEDS_REVIEW,
-            ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
-        ),
-    )
+    result = _ambiguous_time_result(datetime(2026, 8, 20, 14, tzinfo=UTC))
     activities = FakeActivities(prepared=_prepared(), extraction=result)
 
     first_runner = _runner(activities, persistence, checkpointer=memory)

@@ -9,6 +9,7 @@ from recruitment_agent.application.clock import SystemClock
 from recruitment_agent.application.errors import (
     AuthenticationFailedError,
     AuthenticationRequiredError,
+    TokenCacheConflictError,
 )
 from recruitment_agent.config.settings import MicrosoftSettings
 from recruitment_agent.microsoft.auth import ADMIN_LOGIN_SCOPES, MicrosoftAuthorizationService
@@ -368,6 +369,35 @@ async def test_silent_auth_passes_scopes_as_the_list_msal_requires() -> None:
         cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
         clock=SystemClock(),
         client_factory=Factory(client),
+    )
+
+    token = await service.get_access_token(connection_id=connection_id)
+
+    assert token == "token-1"
+
+
+@pytest.mark.asyncio
+async def test_losing_a_concurrent_cache_refresh_still_returns_the_token() -> None:
+    """Regression: an optimistic-lock loser holds a valid token; the Graph
+    operation must proceed instead of failing with TOKEN_CACHE_CONFLICT."""
+    connection_id = uuid4()
+
+    class ConflictStore(AuthStore):
+        async def save_token_cache(self, **kwargs: object) -> int:
+            del kwargs
+            raise TokenCacheConflictError("Microsoft token cache changed concurrently")
+
+    class RefreshedCacheFactory(Factory):
+        def create(self, cache: SerializableTokenCache) -> MsalClient:
+            cache.has_state_changed = True
+            return super().create(cache)
+
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=ConflictStore(connection_id),
+        cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
+        clock=SystemClock(),
+        client_factory=RefreshedCacheFactory(StrictScopesMsalClient()),
     )
 
     token = await service.get_access_token(connection_id=connection_id)

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 from collections.abc import Mapping
 from datetime import timedelta
@@ -16,6 +17,7 @@ from msal import SerializableTokenCache
 from recruitment_agent.application.errors import (
     AuthenticationFailedError,
     AuthenticationRequiredError,
+    TokenCacheConflictError,
 )
 from recruitment_agent.config.settings import MicrosoftSettings
 from recruitment_agent.domain.ports import Clock
@@ -34,6 +36,8 @@ from recruitment_agent.microsoft.crypto import AesGcmCipher
 from recruitment_agent.microsoft.scopes import GRAPH_DELEGATED_SCOPES
 
 ADMIN_LOGIN_SCOPES: tuple[str, ...] = ("User.Read",)
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DefaultMsalClientFactory:
@@ -254,7 +258,13 @@ class MicrosoftAuthorizationService:
             account,
             force_refresh=force_refresh,
         )
-        await self._save_cache_if_changed(snapshot=snapshot, cache=cache)
+        try:
+            await self._save_cache_if_changed(snapshot=snapshot, cache=cache)
+        except TokenCacheConflictError:
+            # A concurrent job persisted a fresher cache first. The token we
+            # just acquired is still valid, so losing this optimistic write
+            # must not fail the caller's Graph operation.
+            LOGGER.info("token_cache_save_skipped_concurrent_refresh")
         if result is None:
             raise AuthenticationRequiredError("Microsoft account authorization is required")
         access_token = result.get("access_token")

@@ -73,6 +73,15 @@ class GraphBriefMailClient:
                         "saveToSentItems": True,
                     },
                 )
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+                # The connection was never established, so the request was
+                # definitely not delivered; retrying cannot duplicate mail.
+                if attempt + 1 >= self._max_attempts:
+                    raise BriefSendError(
+                        "Graph sendMail could not connect to the service"
+                    ) from exc
+                await self._sleep(min(2.0**attempt, self._max_retry_delay))
+                continue
             except httpx.RequestError as exc:
                 raise BriefSendUncertainError(
                     "Graph sendMail transport outcome is uncertain"
