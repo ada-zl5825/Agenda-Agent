@@ -1,4 +1,4 @@
-# Operations through Phase 8
+# Operations through Phase 9A
 
 Azure Functions hosts a thin ASGI adapter around FastAPI. Functions and routes contain no business logic. Configuration is loaded through typed Pydantic Settings, production secrets are never committed, and persistent state belongs in PostgreSQL.
 
@@ -146,6 +146,85 @@ record, so retirement requires a separate reviewed catalog mutation.
 
 Future timers and external calls must be idempotent, timeout-bounded and retry-bounded.
 
+## Phase 9A runtime control and manual operations
+
+Phase 9A adds migration `20260813_0010`, the `app.runtime_controls` source of truth, and the
+privacy-safe `app.operation_runs` audit/lease table. Apply the migration before deploying the
+Phase 9A application code:
+
+```text
+uv run alembic upgrade head
+```
+
+Timer and dispatcher composition fails closed when this control table is unavailable: no mail,
+workflow, Calendar, or Brief side effect is attempted. This makes a schema/configuration outage
+visible through protected readiness and status without silently bypassing the runtime kill switch.
+
+The control plane is available under `/api/v1/ops` and requires
+`Authorization: Bearer <OPS_API_TOKEN>`. `OPS_API_TOKEN` is an independent base64-encoded 32-byte
+random secret stored in Key Vault; it must not reuse any encryption or signing key. The API never
+returns OAuth tokens, Graph message IDs, subjects, bodies, recipients, secure URLs, or decrypted
+links. Public `GET /health/live` proves only that the process can serve HTTP. Protected
+`GET /health/ready` checks PostgreSQL and the presence of an authorized Microsoft connection.
+
+Available control and observation routes are:
+
+- `GET /api/v1/ops/control` and `PATCH /api/v1/ops/control`;
+- `GET /api/v1/ops/status`;
+- `POST /api/v1/ops/operations/mail-sync`;
+- `POST /api/v1/ops/operations/process-email/{source_email_id}`;
+- `POST /api/v1/ops/operations/process-pending` with a bounded `1..100` limit;
+- `POST /api/v1/ops/operations/reset-mail-cursor`; and
+- `GET /api/v1/ops/operations/{operation_id}`.
+
+Every POST requires a caller-generated `Idempotency-Key` containing 8 to 128 ASCII characters and
+returns `202 Accepted` with an operation ID. HTTP requests never wait for Graph or the LangGraph
+workflow. The Azure Storage Queue message contains only that opaque operation ID; the worker reads
+all command parameters from PostgreSQL, claims a 25-minute lease, and uses the platform's bounded
+delivery attempts. Reusing the same key returns the same operation and may safely redeliver its
+opaque queue message; the database lease prevents a second execution and also closes the
+database-created/queue-send failure window. A once-per-minute dispatcher re-enqueues any operation
+still marked `queued` or holding an expired worker lease, so an HTTP disconnect, worker crash, or
+Storage transient cannot strand accepted work.
+Batch processing creates deterministic child operations, and each source email is claimed
+atomically before its workflow begins.
+
+Runtime changes use optimistic concurrency: read the current `version`, then send it as
+`expected_version` with a required reason (`manual`, `testing`, `maintenance`, `incident`, or
+`account_switch`). Calendar writes cannot be enabled while workflow processing is paused. Cursor
+reset is intentionally rejected unless both mail synchronization and workflow processing are
+paused. Environment booleans initialize the control row once; after that, PostgreSQL controls the
+live state without a resource deployment.
+Status also reports capability ceilings. Workflow processing requires a configured enabled model;
+Calendar cannot be enabled unless the deployment has `CALENDAR_SYNC_ENABLED=true`; Daily Brief
+cannot be enabled until its recipient, public base URL, and independent web-session key are
+configured. These checks prevent a runtime switch from claiming an external side effect is active
+when its cloud boundary is unavailable.
+
+Example PowerShell smoke sequence (do not paste the token into logs or source control):
+
+```powershell
+$headers = @{
+  Authorization = "Bearer $env:OPS_API_TOKEN"
+  "Idempotency-Key" = "manual-sync-20260813-001"
+}
+Invoke-RestMethod "$env:AGENDA_AGENT_URL/health/ready" -Headers $headers
+$operation = Invoke-RestMethod `
+  "$env:AGENDA_AGENT_URL/api/v1/ops/operations/mail-sync" `
+  -Method Post -Headers $headers
+Invoke-RestMethod `
+  "$env:AGENDA_AGENT_URL/api/v1/ops/operations/$($operation.id)" `
+  -Headers @{ Authorization = "Bearer $env:OPS_API_TOKEN" }
+```
+
+For a stability test, verify liveness and readiness, trigger one mail sync twice with the same
+idempotency key, confirm the same operation ID is returned, wait for `succeeded`, then submit a
+small `process-pending` batch. Confirm source/workflow counts converge, Review items are visible on
+the graphical Review page, Calendar writes match the runtime switch, and no unexpected duplicate
+Application, event, action, Calendar, or Brief rows are created. Pause all switches to test the
+kill switch. Test cursor reset only in that paused state, then resume mail sync and verify a full
+delta reconciliation remains idempotent.
+
 ## Production deployment
 
 Production infrastructure is defined in `infra/main.bicep`. It creates:
@@ -154,7 +233,8 @@ Production infrastructure is defined in `infra/main.bicep`. It creates:
 - a managed-identity-only Storage account for host state and deployment packages;
 - workspace-based Application Insights and Log Analytics;
 - a Key Vault containing the database URL, Microsoft client secret, token-cache key, a separate
-  action-link encryption key, and a separate web-session signing key;
+  action-link encryption key, a separate web-session signing key, and a separate operations API
+  token;
 - a PostgreSQL Flexible Server on a delegated private subnet; and
 - a VNet-integrated Function App with no public route to PostgreSQL.
 
@@ -169,12 +249,16 @@ registration, and the GitHub `production` environment configuration:
 The command requires Azure CLI and GitHub CLI authentication. It generates all application secrets
 locally and writes them directly to GitHub environment secrets. Re-running the command rotates the
 Microsoft client secret and application encryption secrets, so only run it intentionally. Existing
-installations must add the `LINK_ENCRYPTION_KEY` and `WEB_SESSION_SIGNING_KEY` GitHub `production`
-environment secrets before the next deployment. Each must be an independent base64-encoded random
-32-byte value and neither may reuse the token-cache key.
+installations must add `OPS_API_TOKEN` to the GitHub `production` environment before the next
+infrastructure deployment. It must be an independent base64-encoded random 32-byte value and must
+not reuse the token-cache, action-link, or web-session key.
 
-`deploy-azure.yml` runs only for this upstream repository after the `quality` workflow succeeds
-on `main`, or through a manual dispatch from `main`. Azure trusts the exact immutable GitHub OIDC
+`deploy-app.yml` publishes ordinary application changes after `quality` succeeds. Its scope check
+skips the deployment when the verified revision changes `infra/**`, `scripts/bootstrap-azure.ps1`,
+or `deploy-infra.yml`; in that case `deploy-infra.yml` validates and incrementally deploys Bicep and
+then publishes the matching application package. The infrastructure workflow can also be manually
+dispatched from `main`, but it does not run for ordinary code-only changes. Azure trusts the exact
+immutable GitHub OIDC
 subject built from this repository's owner ID, repository ID, and `production` environment. Forks,
 renames, namespace reuse, and pull requests cannot obtain the production Azure token.
 
@@ -182,11 +266,35 @@ The infrastructure deployment is incremental and idempotent: subsequent runs upd
 resources. The concurrency group permits only one production deployment at a time.
 
 Database migrations remain a separate controlled operation because the database has no public
-endpoint. The initial template therefore sets `mailSyncEnabled = false`. Run Alembic from a
-VNet-connected execution environment, change that parameter to `true`, and deploy again:
+endpoint. Production therefore includes a manual Azure Container Apps Job in the same VNet. It
+uses a dedicated user-assigned managed identity to pull its image from ACR and resolve only the
+`database-url` Key Vault secret. No VM, public PostgreSQL endpoint, registry password, or database
+credential is created. The Job has one replica, no automatic retry for an uncertain migration,
+and an application-level PostgreSQL advisory lock to serialize schema/catalog mutations.
+
+The Job accepts only `check`, `migrate`, and `seed-companies`; it never accepts arbitrary SQL or a
+shell command. Start it from any authenticated workstation with:
+
+```powershell
+./scripts/start-database-maintenance.ps1 -Operation check
+./scripts/start-database-maintenance.ps1 -Operation migrate
+./scripts/start-database-maintenance.ps1 -Operation seed-companies
+```
+
+`check` runs `alembic current --check-heads` without taking the mutation lock. `migrate` runs
+`alembic upgrade head`, and `seed-companies` invokes the idempotent reviewed company catalog seed;
+the latter two hold the advisory lock for the complete operation. Each trigger creates an auditable
+Container Apps Job execution and then scales back to zero. Inspect an execution with the command
+printed by the script or in Azure Portal under Container Apps Jobs.
+
+The infrastructure workflow creates the dedicated `/27` Container Apps subnet, Basic ACR,
+managed environment, identity/RBAC, immutable revision-tagged image, and manual Job. It runs only
+for the infrastructure deployment path; ordinary application deployments do not rebuild these
+resources. Keep the initial runtime controls disabled until `migrate` and the required seed have
+succeeded:
 
 ```text
-uv run alembic upgrade head
+./scripts/start-database-maintenance.ps1 -Operation migrate
 ```
 
 ## Phase 3 key handling

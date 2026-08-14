@@ -13,10 +13,10 @@ from recruitment_agent.persistence.microsoft_auth import SqlAlchemyMicrosoftAuth
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
 
 
-async def run_mail_sync_job() -> MailSyncResult | None:
+async def run_mail_sync_job(*, force: bool = False) -> MailSyncResult | None:
     """Build adapters, invoke the application service, and release network resources."""
     microsoft_settings = get_microsoft_settings()
-    if not microsoft_settings.mail_sync_enabled:
+    if not force and not microsoft_settings.mail_sync_enabled:
         return None
 
     database_settings = get_settings()

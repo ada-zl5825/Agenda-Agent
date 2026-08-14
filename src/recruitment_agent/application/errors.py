@@ -93,3 +93,19 @@ class ReviewConflictError(ApplicationError):
 
 class CsrfValidationError(ApplicationError):
     code = "CSRF_INVALID"
+
+
+class OperationsAuthenticationError(ApplicationError):
+    code = "OPS_AUTH_REQUIRED"
+
+
+class OperationNotFoundError(ApplicationError):
+    code = "OPERATION_NOT_FOUND"
+
+
+class OperationConflictError(ApplicationError):
+    code = "OPERATION_CONFLICT"
+
+
+class OperationDisabledError(ApplicationError):
+    code = "OPERATION_DISABLED"

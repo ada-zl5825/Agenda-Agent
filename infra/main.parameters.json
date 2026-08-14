@@ -17,6 +17,9 @@
     "mailSyncEnabled": {
       "value": false
     },
+    "workflowProcessingEnabled": {
+      "value": false
+    },
     "calendarSyncEnabled": {
       "value": false
     },

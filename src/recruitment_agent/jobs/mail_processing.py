@@ -68,10 +68,14 @@ class MailProcessingJobRequest:
 
 async def run_mail_processing_job(
     request: MailProcessingJobRequest,
+    *,
+    calendar_write_enabled: bool | None = None,
 ) -> WorkflowInvocationResult:
     """Start one workflow using production adapters and release owned resources."""
     model_settings = get_azure_openai_settings()
-    async with _production_workflow_runner() as runner:
+    async with _production_workflow_runner(
+        calendar_write_enabled=calendar_write_enabled
+    ) as runner:
         return await runner.start(
             WorkflowStartRequest(
                 source_email_id=request.source_email_id,
@@ -97,7 +101,10 @@ async def resume_mail_processing_job(
 
 
 @asynccontextmanager
-async def _production_workflow_runner() -> AsyncIterator[RecruitmentWorkflowRunner]:
+async def _production_workflow_runner(
+    *,
+    calendar_write_enabled: bool | None = None,
+) -> AsyncIterator[RecruitmentWorkflowRunner]:
     """Own all network, model, database, and checkpointer resources for one invocation."""
     settings = get_settings()
     microsoft_settings = get_microsoft_settings()
@@ -182,7 +189,10 @@ async def _production_workflow_runner() -> AsyncIterator[RecruitmentWorkflowRunn
                             ),
                         ),
                         clock=clock,
-                        enabled=microsoft_settings.calendar_sync_enabled,
+                        enabled=(
+                            microsoft_settings.calendar_sync_enabled
+                            and calendar_write_enabled is not False
+                        ),
                     ),
                     clock=clock,
                 )

@@ -1,0 +1,97 @@
+name: deploy-production-app
+
+on:
+  workflow_run:
+    workflows: [quality]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-app
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    if: >-
+      github.repository == 'ada-zl5825/Agenda-Agent' &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository) ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_app: ${{ steps.scope.outputs.deploy_app }}
+      revision: ${{ steps.scope.outputs.revision }}
+    steps:
+      - name: Check out the verified revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Select application-only deployment
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "deploy_app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$REVISION^1" "$REVISION" | grep -Eq '^(infra/|scripts/bootstrap-azure\.ps1$|\.github/workflows/deploy-infra\.yml$)'; then
+            echo "deploy_app=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_app=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: scope
+    if: needs.scope.outputs.deploy_app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the verified revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.revision }}
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Azure Functions application
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+          package: .
+          remote-build: true
+          respect-funcignore: true
+
+      - name: Verify liveness endpoint
+        shell: bash
+        env:
+          FUNCTION_URL: https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 20 "$FUNCTION_URL/health/live"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1

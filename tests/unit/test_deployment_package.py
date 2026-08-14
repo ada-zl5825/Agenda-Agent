@@ -53,7 +53,7 @@ def test_flex_function_app_uses_function_app_config_for_python_runtime() -> None
 
 def test_action_link_key_is_separate_and_resolved_through_managed_identity() -> None:
     infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
-    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
 
     assert "param linkEncryptionKey string" in infrastructure
     assert "var linkEncryptionSecretName = 'recruitment-link-encryption-key'" in infrastructure
@@ -73,7 +73,7 @@ def test_http_routes_have_no_default_api_prefix() -> None:
 
 def test_phase_four_uses_managed_identity_azure_openai_configuration() -> None:
     infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
-    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
 
     assert "LLM_ENABLED: string(llmEnabled)" in infrastructure
     assert "AZURE_OPENAI_ENDPOINT: azureOpenAIEndpoint" in infrastructure
@@ -87,7 +87,7 @@ def test_phase_four_uses_managed_identity_azure_openai_configuration() -> None:
 
 def test_phase_seven_calendar_is_permissioned_but_disabled_by_default() -> None:
     infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
-    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
     bootstrap = Path("scripts/bootstrap-azure.ps1").read_text(encoding="utf-8")
 
     assert "param calendarSyncEnabled bool = false" in infrastructure
@@ -99,7 +99,7 @@ def test_phase_seven_calendar_is_permissioned_but_disabled_by_default() -> None:
 
 def test_phase_eight_daily_brief_is_secure_and_disabled_by_default() -> None:
     infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
-    workflow = Path(".github/workflows/deploy-azure.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
     bootstrap = Path("scripts/bootstrap-azure.ps1").read_text(encoding="utf-8")
 
     assert "param dailyBriefEnabled bool = false" in infrastructure
@@ -116,3 +116,41 @@ def test_phase_eight_daily_brief_is_secure_and_disabled_by_default() -> None:
     assert "e383f46e-2787-4529-855e-0e479a3ffac0" in bootstrap
     assert 'Set-GitHubVariable -Name "DAILY_BRIEF_ENABLED" -Value "false"' in bootstrap
     assert 'Set-GitHubSecret -Name "WEB_SESSION_SIGNING_KEY"' in bootstrap
+
+
+def test_phase_nine_a_deploys_app_and_infrastructure_on_separate_paths() -> None:
+    app_workflow = Path(".github/workflows/deploy-app.yml").read_text(encoding="utf-8")
+    infra_workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
+    infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+    assert "azure/arm-deploy" not in app_workflow
+    assert "infra/|scripts/bootstrap-azure" in infra_workflow
+    assert "opsApiToken=${{ secrets.OPS_API_TOKEN }}" in infra_workflow
+    assert "recruitment-operations" in infrastructure
+    assert "OPS_API_TOKEN: '@Microsoft.KeyVault(" in infrastructure
+    assert "azure-storage-queue==" in requirements
+
+
+def test_database_maintenance_is_a_private_allowlisted_container_apps_job() -> None:
+    foundation = Path("infra/database-maintenance-foundation.bicep").read_text(encoding="utf-8")
+    job = Path("infra/database-maintenance-job.bicep").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
+    dockerfile = Path("infra/database-maintenance/Dockerfile").read_text(encoding="utf-8")
+    trigger_script = Path("scripts/start-database-maintenance.ps1").read_text(encoding="utf-8")
+
+    assert "10.20.2.0/27" in foundation
+    assert "internal: true" in foundation
+    assert "adminUserEnabled: false" in foundation
+    assert "KeyVault/vaults" in foundation
+    assert "triggerType: 'Manual'" in job
+    assert "replicaRetryLimit: 0" in job
+    assert "secretRef: 'database-url'" in job
+    assert "keyVaultUrl: databaseUrlSecretUri" in job
+    assert "databaseMaintenanceIdentityId" in job
+    assert "az acr build" in workflow
+    assert "database-maintenance-job.bicep" in workflow
+    assert "USER agenda" in dockerfile
+    assert "properties.template.containers[?name=='database-maintenance']" in trigger_script
+    assert "--image $image" in trigger_script
+    assert '--env-vars "DATABASE_URL=secretref:database-url"' in trigger_script

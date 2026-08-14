@@ -42,6 +42,12 @@ param linkEncryptionKey string
 @description('Independent Base64-encoded 32-byte HMAC key for browser sessions and CSRF.')
 param webSessionSigningKey string
 
+@secure()
+@minLength(44)
+@maxLength(44)
+@description('Independent Base64-encoded 32-byte bearer token for the protected operations API.')
+param opsApiToken string
+
 @description('IANA timezone used for user-facing schedules.')
 param userTimezone string = 'Europe/London'
 
@@ -50,6 +56,9 @@ param mailSyncSchedule string = '0 */10 * * * *'
 
 @description('Enable mail synchronization only after Alembic migrations and OAuth consent complete.')
 param mailSyncEnabled bool = false
+
+@description('Initial database-backed workflow switch used only when Phase 9A creates its control row.')
+param workflowProcessingEnabled bool = false
 
 @description('Enable Phase 7 Calendar writes only after migration, consent, and reauthorization.')
 param calendarSyncEnabled bool = false
@@ -109,6 +118,8 @@ var applicationInsightsName = 'appi-agenda-${resourceToken}'
 var keyVaultName = 'kv-agenda-${take(resourceToken, 13)}'
 var linkEncryptionSecretName = 'recruitment-link-encryption-key'
 var webSessionSigningSecretName = 'web-session-signing-key'
+var opsApiTokenSecretName = 'ops-api-token'
+var operationsQueueName = 'recruitment-operations'
 var virtualNetworkName = 'vnet-agenda-${resourceToken}'
 var postgresServerName = 'psql-agenda-${resourceToken}'
 var postgresDatabaseName = 'recruitment'
@@ -179,6 +190,15 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
       properties: {
         publicAccess: 'None'
       }
+    }
+  }
+
+  resource queueService 'queueServices' = {
+    name: 'default'
+
+    resource operationsQueue 'queues' = {
+      name: operationsQueueName
+      properties: {}
     }
   }
 }
@@ -303,6 +323,20 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           ]
         }
       }
+      {
+        name: 'database-maintenance'
+        properties: {
+          addressPrefix: '10.20.2.0/27'
+          delegations: [
+            {
+              name: 'container-apps-environment-delegation'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
+        }
+      }
     ]
   }
 }
@@ -421,6 +455,14 @@ resource webSessionSigningKeyValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01
   }
 }
 
+resource opsApiTokenValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: opsApiTokenSecretName
+  properties: {
+    value: opsApiToken
+  }
+}
+
 resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
   location: location
@@ -506,6 +548,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       GRAPH_MAX_RETRY_DELAY_SECONDS: '30'
       MAIL_FOLDER_ID: 'inbox'
       MAIL_SYNC_ENABLED: string(mailSyncEnabled)
+      WORKFLOW_PROCESSING_ENABLED: string(workflowProcessingEnabled)
       MAIL_SYNC_INTERVAL_MINUTES: '10'
       MAIL_SYNC_SCHEDULE: mailSyncSchedule
       CALENDAR_SYNC_ENABLED: string(calendarSyncEnabled)
@@ -518,6 +561,9 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       PUBLIC_APP_BASE_URL: 'https://${functionApp.properties.defaultHostName}'
       WEB_SESSION_SIGNING_KEY: '@Microsoft.KeyVault(SecretUri=${webSessionSigningKeyValue.properties.secretUriWithVersion})'
       WEB_SESSION_TTL_SECONDS: '28800'
+      OPS_API_TOKEN: '@Microsoft.KeyVault(SecretUri=${opsApiTokenValue.properties.secretUriWithVersion})'
+      OPS_QUEUE_NAME: operationsQueueName
+      OPS_DISPATCH_SCHEDULE: '0 * * * * *'
       AzureWebJobsStorage__accountName: storage.name
       AzureWebJobsStorage__credential: 'managedidentity'
       AzureWebJobsStorage__clientId: runtimeIdentity.properties.clientId

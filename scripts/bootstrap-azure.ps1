@@ -90,6 +90,7 @@ $oidcSubject = "repo:$($repository.owner.login)@$($repository.owner.id)/$($repos
 $requiredProviders = @(
     "Microsoft.App",
     "Microsoft.Authorization",
+    "Microsoft.ContainerRegistry",
     "Microsoft.DBforPostgreSQL",
     "Microsoft.Insights",
     "Microsoft.KeyVault",
@@ -295,12 +296,22 @@ finally {
     $webSessionRandom.Dispose()
 }
 $webSessionSigningKey = [Convert]::ToBase64String($webSessionKeyBytes)
+$opsApiTokenBytes = [byte[]]::new(32)
+$opsApiTokenRandom = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $opsApiTokenRandom.GetBytes($opsApiTokenBytes)
+}
+finally {
+    $opsApiTokenRandom.Dispose()
+}
+$opsApiToken = [Convert]::ToBase64String($opsApiTokenBytes)
 
 Set-GitHubVariable -Name "AZURE_CLIENT_ID" -Value ([string] $deploymentIdentity.clientId)
 Set-GitHubVariable -Name "AZURE_TENANT_ID" -Value $tenantId
 Set-GitHubVariable -Name "AZURE_SUBSCRIPTION_ID" -Value $SubscriptionId
 Set-GitHubVariable -Name "CALENDAR_SYNC_ENABLED" -Value "false"
 Set-GitHubVariable -Name "DAILY_BRIEF_ENABLED" -Value "false"
+Set-GitHubVariable -Name "WORKFLOW_PROCESSING_ENABLED" -Value "false"
 Set-GitHubVariable -Name "AZURE_RESOURCE_GROUP" -Value $ResourceGroupName
 Set-GitHubVariable -Name "AZURE_FUNCTIONAPP_NAME" -Value $functionAppName
 Set-GitHubVariable -Name "MICROSOFT_CLIENT_ID" -Value $microsoftClientId
@@ -311,6 +322,7 @@ Set-GitHubSecret -Name "MICROSOFT_CLIENT_SECRET" -Value ([string] $clientCredent
 Set-GitHubSecret -Name "TOKEN_CACHE_ENCRYPTION_KEY" -Value $tokenCacheKey
 Set-GitHubSecret -Name "LINK_ENCRYPTION_KEY" -Value $linkEncryptionKey
 Set-GitHubSecret -Name "WEB_SESSION_SIGNING_KEY" -Value $webSessionSigningKey
+Set-GitHubSecret -Name "OPS_API_TOKEN" -Value $opsApiToken
 
 Write-Host "Bootstrap complete."
 Write-Host "Repository:        $GitHubRepository"
