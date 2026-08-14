@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from azure.identity.aio import DefaultAzureCredential
+from azure.storage.queue import TextBase64EncodePolicy
 from azure.storage.queue.aio import QueueClient
 
 from recruitment_agent.config.settings import OperationsSettings
@@ -31,11 +32,16 @@ async def azure_operation_queue(
     settings: OperationsSettings,
 ) -> AsyncIterator[AzureStorageOperationQueue]:
     """Open a local connection-string client or a managed-identity cloud client."""
+    # The Functions host dequeues with its default MessageEncoding=Base64, so the
+    # sender must Base64-encode or every message is undecodable and never invokes
+    # the queue worker.
+    encode_policy = TextBase64EncodePolicy()
     connection_string = os.getenv("AzureWebJobsStorage")  # noqa: SIM112
     if connection_string:
         client = QueueClient.from_connection_string(
             connection_string,
             queue_name=settings.ops_queue_name,
+            message_encode_policy=encode_policy,
         )
         async with client:
             yield AzureStorageOperationQueue(client)
@@ -59,6 +65,7 @@ async def azure_operation_queue(
         account_url=f"https://{account_name}.queue.core.windows.net",
         queue_name=settings.ops_queue_name,
         credential=credential,
+        message_encode_policy=encode_policy,
     )
     try:
         async with client:

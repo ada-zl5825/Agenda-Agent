@@ -344,6 +344,37 @@ def test_aes_gcm_round_trip_and_context_authentication() -> None:
         cipher.decrypt(encrypted, context="cache:2")
 
 
+class StrictScopesMsalClient(MsalClient):
+    """Replicates MSAL's runtime assertion that silent-auth scopes must be a list."""
+
+    def acquire_token_silent_with_error(self, *args: object, **kwargs: object) -> JsonObject:
+        del kwargs
+        scopes = args[0]
+        assert isinstance(scopes, list), "Invalid parameter type"
+        return {"access_token": "token-1"}
+
+    def get_accounts(self, username: str | None = None) -> list[JsonObject]:
+        del username
+        return [{"home_account_id": "account-1"}]
+
+
+@pytest.mark.asyncio
+async def test_silent_auth_passes_scopes_as_the_list_msal_requires() -> None:
+    connection_id = uuid4()
+    client = StrictScopesMsalClient()
+    service = MicrosoftAuthorizationService(
+        settings=settings(connection_id),
+        store=AuthStore(connection_id),
+        cipher=AesGcmCipher(key=b"k" * 32, key_version="v1"),
+        clock=SystemClock(),
+        client_factory=Factory(client),
+    )
+
+    token = await service.get_access_token(connection_id=connection_id)
+
+    assert token == "token-1"
+
+
 @pytest.mark.asyncio
 async def test_expired_silent_auth_requires_new_user_authorization() -> None:
     connection_id = uuid4()
