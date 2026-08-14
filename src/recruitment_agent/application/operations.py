@@ -454,14 +454,14 @@ class OperationsControlService:
             raise OperationNotFoundError("operation does not exist")
         return operation
 
-    async def redispatch_queued(self, *, limit: int = 100) -> int:
+    async def redispatch_queued(self, *, limit: int = 100) -> tuple[UUID, ...]:
         operation_ids = await self._store.list_dispatchable_operation_ids(
             now=self._clock.now(),
             limit=limit,
         )
         for operation_id in operation_ids:
             await self._queue.enqueue(operation_id=operation_id)
-        return len(operation_ids)
+        return operation_ids
 
     @staticmethod
     def hash_idempotency_key(value: str) -> str:
