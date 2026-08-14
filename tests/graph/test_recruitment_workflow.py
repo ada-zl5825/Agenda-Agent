@@ -10,7 +10,6 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from recruitment_agent.application.domain_processing import RecruitmentDomainService
-from recruitment_agent.application.errors import TimeEvidenceUnresolvedError
 from recruitment_agent.calendar.models import (
     CalendarSyncOperation,
     CalendarSyncRequest,
@@ -582,9 +581,8 @@ async def test_timezone_interrupt_rejects_invalid_choice_then_resumes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unresolved_datetime_after_timezone_review_fails_visibly() -> None:
-    """Regression: a reviewed-but-unparseable interview time must not end as a
-    silently PROCESSED email with no interview and no calendar entry."""
+async def test_unresolved_datetime_after_timezone_review_asks_for_override() -> None:
+    """A 126-forwarded Chinese wall-clock must not die after timezone-only review."""
     persistence = FakeWorkflowPersistence()
     needs_timezone = _ambiguous_time_result(
         None,
@@ -597,16 +595,26 @@ async def test_unresolved_datetime_after_timezone_review_fails_visibly() -> None
     )
 
     interrupted = await runner.start(_request())
-    with pytest.raises(TimeEvidenceUnresolvedError):
-        await runner.resume(
-            processing_run_id=RUN_ID,
-            source_email_id=SOURCE_EMAIL_ID,
-            decision=ReviewDecision(choice="Europe/London"),
-        )
+    after_timezone = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="Asia/Shanghai"),
+    )
+    completed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(
+            choice="use_override",
+            override_value="2026-08-20 15:00",
+        ),
+    )
 
-    assert interrupted.interrupted
-    assert persistence.final_status is ProcessingRunStatus.FAILED
-    assert persistence.error_code == "EVENT_DATETIME_UNRESOLVED"
+    assert interrupted.interrupt_payloads[0]["review_type"] == "TIMEZONE_AMBIGUITY"
+    assert after_timezone.interrupted
+    assert after_timezone.interrupt_payloads[0]["review_type"] == "DATETIME_CONFLICT"
+    assert after_timezone.interrupt_payloads[0]["reason"] == "datetime_unresolved"
+    assert completed.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert persistence.final_status is ProcessingRunStatus.COMPLETED
 
 
 @pytest.mark.asyncio

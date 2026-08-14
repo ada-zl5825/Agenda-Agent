@@ -59,6 +59,52 @@ def normalize_company_name(value: str) -> str:
 _DOMAIN_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
+#: Personal webmail hosts must never win company resolution by domain. The
+#: dedicated Outlook mailbox receives every 126 auto-forward, so treating
+#: ``126.com`` as an employer would collapse unrelated recruiters together.
+_CONSUMER_MAILBOX_DOMAINS = frozenset(
+    {
+        "126.com",
+        "163.com",
+        "yeah.net",
+        "qq.com",
+        "foxmail.com",
+        "sina.com",
+        "sina.cn",
+        "sohu.com",
+        "139.com",
+        "189.cn",
+        "gmail.com",
+        "googlemail.com",
+        "outlook.com",
+        "hotmail.com",
+        "live.com",
+        "msn.com",
+        "icloud.com",
+        "me.com",
+        "mac.com",
+        "yahoo.com",
+        "ymail.com",
+        "aol.com",
+        "proton.me",
+        "protonmail.com",
+    }
+)
+
+
+def is_consumer_mailbox_domain(domain: str | None) -> bool:
+    """Report whether a hostname is a personal mailbox, not an employer."""
+    if domain is None or not domain.strip():
+        return False
+    try:
+        normalized = normalize_company_domain(domain)
+    except DomainValidationError:
+        return False
+    return normalized in _CONSUMER_MAILBOX_DOMAINS or any(
+        normalized.endswith(f".{suffix}") for suffix in _CONSUMER_MAILBOX_DOMAINS
+    )
+
+
 def normalize_company_domain(value: str) -> str:
     """Return an ASCII lower-case hostname suitable for exact matching."""
     candidate = unicodedata.normalize("NFKC", value).strip().casefold().rstrip(".")

@@ -47,6 +47,61 @@ def test_html_normalization_removes_active_hidden_tracking_and_footer_content() 
     assert "Footer content" not in normalized.body_text
 
 
+def test_outlook_126_wrap_without_banner_keeps_original_recruiter() -> None:
+    """Regression: Outlook #divRplyFwdMsg must not drop 126 auto-forward headers."""
+    normalized = EmailNormalizer().normalize(
+        source_email_id=uuid4(),
+        mail=fetched_mail(
+            "forwarded_outlook_126.html",
+            subject="腾讯后台开发工程师一面",
+            sender_name="求职邮箱",
+            sender_address="candidate@126.com",
+        ),
+    )
+
+    assert normalized.is_forwarded is True
+    assert normalized.sender_address == "zhang.recruiter@company.example"
+    assert normalized.sender_domain == "company.example"
+    assert normalized.outer_sender_address == "candidate@126.com"
+    assert normalized.outer_sender_domain == "126.com"
+    assert normalized.subject == "腾讯后台开发工程师一面"
+    assert "邀请您参加" in normalized.body_text
+    assert "来自 126" not in normalized.body_text
+
+
+def test_recruiter_reply_quoting_126_does_not_replace_author() -> None:
+    mail = FetchedMail(
+        metadata=SourceEmailCandidate(
+            graph_message_id="graph-reply",
+            internet_message_id=None,
+            subject="Re: Interview",
+            sender_domain="careers.example",
+            received_at=datetime(2026, 8, 12, 9, tzinfo=UTC),
+            outlook_web_link=None,
+            has_attachments=False,
+        ),
+        sender_name="Alice Recruiter",
+        sender_address="alice@careers.example",
+        body_content_type="html",
+        body_content=(
+            "<p>Please confirm the new time.</p>"
+            "<div id='divRplyFwdMsg'>"
+            "<p>From: Candidate &lt;candidate@126.com&gt;</p>"
+            "<p>Sent: Tuesday, 11 August 2026 18:00</p>"
+            "<p>To: alice@careers.example</p>"
+            "<p>Subject: Interview</p>"
+            "</div>"
+        ),
+    )
+
+    normalized = EmailNormalizer().normalize(source_email_id=uuid4(), mail=mail)
+
+    assert normalized.is_forwarded is False
+    assert normalized.sender_address == "alice@careers.example"
+    assert normalized.sender_domain == "careers.example"
+    assert "Please confirm the new time" in normalized.body_text
+
+
 def test_126_forward_prefers_original_recruiter_subject_and_body() -> None:
     normalized = EmailNormalizer().normalize(
         source_email_id=uuid4(),

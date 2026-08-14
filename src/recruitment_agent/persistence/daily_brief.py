@@ -196,6 +196,8 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
                 sections.append(BriefSection.ASSESSMENTS)
             if event.type in {"interview", "interview_reschedule"}:
                 sections.append(BriefSection.UPCOMING_INTERVIEWS)
+            if event.type in {"offer", "rejection", "application_received"}:
+                sections.append(BriefSection.NEW_UPDATES)
             items.extend(BriefItem(section=section, **base) for section in sections)
 
         for action, application, company, source, secure_link in action_rows:

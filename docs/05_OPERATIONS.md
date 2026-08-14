@@ -350,7 +350,8 @@ succeeded:
 ## Reliability runbook (2026-08-14 revision)
 
 Design chapter 86 of the canonical design document records the reliability decisions behind this
-runbook; chapter 87 records the reviewed-and-accepted trade-offs. Operational consequences:
+runbook; chapter 87 records the reviewed-and-accepted trade-offs; chapter 88 records the 126
+forward, datetime-override, and duplicate-calendar revisions. Operational consequences:
 
 - **Mail sync**: a `SYNC_IN_PROGRESS` failure code on a manual operation means a concurrent
   synchronization held the 10-minute lease; the operation retries automatically. A
@@ -364,9 +365,15 @@ runbook; chapter 87 records the reviewed-and-accepted trade-offs. Operational co
   configured local hour.
 - **Source emails**: `needs_review` is a first-class processing status meaning "waiting on a
   human"; such emails are excluded from retries and `process-pending` batches until their review
-  is resolved. A run failing with `EVENT_DATETIME_UNRESOLVED` (or a sibling `*_UNRESOLVED` code)
-  means the model could not produce a usable event time even after review; handle the email
-  manually from its Outlook link.
+  is resolved. Unparsed interview times now take two reviews: timezone first, then
+  `YYYY-MM-DD HH:MM` (`use_override`). A run failing with `EVENT_DATETIME_UNRESOLVED` after
+  that override means the supplied clock is still unusable; open the same review URL (the
+  resolve POST redirects there with `error=`) and correct the value, or ignore the item.
+  Emails already marked `failed` before this revision do not resume in place. Submit
+  `process-pending` so a new `processing_run_id` is created, then complete both reviews.
+  `/brief/today` is the live preview; a Daily Brief email already sent that local day is
+  at-most-once and will not rewrite. Active `offer` / `rejection` / `application_received`
+  events appear under `NEW UPDATES`.
 
 ### One-time cleanup after the Base64 queue fix
 

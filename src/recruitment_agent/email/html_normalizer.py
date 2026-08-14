@@ -69,6 +69,11 @@ class HtmlBodyNormalizer:
             image.decompose()
         for line_break in soup.find_all("br"):
             line_break.replace_with("\n")
+        # Outlook wraps "From:" / "Sent:" in <b> inside #divRplyFwdMsg. A
+        # newline between those inline tags would split the header from its
+        # value and hide the original 126-forwarded recruiter.
+        for tag in soup.find_all(["b", "strong", "em", "i", "u", "span", "font"]):
+            tag.unwrap()
         for anchor in soup.find_all("a"):
             label = anchor.get_text(" ", strip=True)
             href = anchor.get("href")
@@ -142,6 +147,19 @@ class HtmlBodyNormalizer:
         text = tag.get_text(" ", strip=True)
         if re.search(
             r"(?:forwarded message|original message|转发的邮件|原始邮件)",
+            text,
+            re.IGNORECASE,
+        ):
+            return False
+        # Outlook wraps 126/manual forwards in #divRplyFwdMsg with From/Sent/To
+        # and no "Forwarded message" banner. Deleting that node drops the
+        # original recruiter identity that company resolution depends on.
+        if re.search(
+            r"(?:^|\s)(?:from|发件人|寄件者)\s*[:\uff1a]",
+            text,
+            re.IGNORECASE,
+        ) and re.search(
+            r"(?:sent|date|to|subject|发送时间|日期|收件人|主题|主旨)\s*[:\uff1a]",
             text,
             re.IGNORECASE,
         ):

@@ -18,6 +18,7 @@ from recruitment_agent.domain.company import (
     CompanySeed,
     CompanyStatus,
     RawCompanyRole,
+    is_consumer_mailbox_domain,
     normalize_company_domain,
     normalize_company_name,
 )
@@ -182,6 +183,19 @@ async def test_resolver_uses_canonical_then_alias_then_domain_exact_matches() ->
     assert alias.company_id == BYTEDANCE_ID
     assert domain.method is CompanyResolutionMethod.DOMAIN_EXACT
     assert domain.company_id == BYTEDANCE_ID
+
+
+@pytest.mark.asyncio
+async def test_resolver_ignores_consumer_mailbox_domains() -> None:
+    repository = InMemoryCompanyRepository()
+    await CompanyCatalogSeeder(repository).seed(COMMON_COMPANY_SEEDS)
+    resolver = CompanyResolver(repository)
+
+    forwarded = await resolver.resolve(company_raw=None, sender_domain="126.com")
+    vip = await resolver.resolve(company_raw=None, sender_domain="vip.126.com")
+
+    assert forwarded.status is CompanyResolutionStatus.UNRESOLVED
+    assert vip.status is CompanyResolutionStatus.UNRESOLVED
 
 
 @pytest.mark.asyncio
@@ -383,3 +397,11 @@ def test_china_internet_major_catalog_reaches_one_hundred_reviewed_employers() -
         for alias in seed.aliases:
             owner = canonical_names.get(alias.normalized_alias)
             assert owner is None or owner == seed.id
+
+
+def test_consumer_mailbox_domains_are_never_employers() -> None:
+    assert is_consumer_mailbox_domain("126.com")
+    assert is_consumer_mailbox_domain("VIP.126.COM")
+    assert is_consumer_mailbox_domain("outlook.com")
+    assert not is_consumer_mailbox_domain("jobs.bytedance.com")
+    assert not is_consumer_mailbox_domain(None)

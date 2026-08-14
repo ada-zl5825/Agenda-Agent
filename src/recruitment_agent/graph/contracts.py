@@ -14,6 +14,13 @@ from recruitment_agent.extraction.models import (
     RecruitmentExtraction,
 )
 
+_REVIEW_DATETIME_FORMATS = (
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S",
+)
+
 
 class WorkflowStage(StrEnum):
     LOAD_SOURCE_EMAIL = "load_source_email"
@@ -157,6 +164,23 @@ class ReviewDecision(BaseModel):
         return normalized
 
 
+def parse_review_datetime(value: str) -> datetime:
+    """Parse a human-entered local or aware datetime without inventing a zone."""
+    text = value.strip()
+    if not text:
+        raise ValueError("datetime override must not be empty")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        pass
+    for fmt in _REVIEW_DATETIME_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    raise ValueError("datetime override must be YYYY-MM-DD HH:MM")
+
+
 def validate_review_decision(
     request: ReviewRequest,
     raw_decision: object,
@@ -164,6 +188,11 @@ def validate_review_decision(
     decision = ReviewDecision.model_validate(raw_decision)
     if decision.choice not in request.allowed_choices:
         raise ValueError("review choice is not allowed")
+    if request.review_type is ReviewType.DATETIME_CONFLICT and decision.choice == "use_override":
+        if decision.override_value is None:
+            raise ValueError("datetime override is required")
+        parse_review_datetime(decision.override_value)
+        return decision
     if decision.choice == "other":
         if decision.override_value is None:
             raise ValueError("other review choice requires an override value")

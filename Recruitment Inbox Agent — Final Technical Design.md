@@ -948,6 +948,9 @@ resume graph
 calendar sync
 ```
 
+若时区选定后事件挂钟仍为空,不得直接 fail-closed。下一步是 `DATETIME_CONFLICT`
+(`use_override` + `YYYY-MM-DD HH:MM`)。见第 88.2 节。
+
 ---
 
 # 16. Email Normalizer
@@ -1024,6 +1027,9 @@ original recruiter context
 ```
 
 而不是仅依赖 Graph `from`。
+
+生产实现见第 88.1 节:Outlook `#divRplyFwdMsg` 转发头必须保留;仅当外层是消费邮箱、
+内层是招聘方时才替换 Graph 作者;消费域不得赢得公司 `DOMAIN_EXACT` 匹配。
 
 ---
 
@@ -1509,6 +1515,9 @@ timezone_explicit = false
 NEEDS_REVIEW
 ```
 
+缺少可解析挂钟(`DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED`)与时区缺失分开评审:
+先选 IANA 时区,再人工补 `YYYY-MM-DD HH:MM`。见第 88.2 节。
+
 ---
 
 # 35. Relative Time
@@ -1626,6 +1635,9 @@ class RecruitmentEvent:
     status: EventStatus
 ```
 
+语义指纹只对**已解析**时间去重;两端时间都为空时不得互吞。招聘方把改期写成新邀请时,
+同轮次唯一活跃面试且时间变化按改期更新(`interview_time_changed`)。见第 88.3 节。
+
 ---
 
 # 40. Event Status
@@ -1723,6 +1735,9 @@ update CalendarEvent #ABC
 create RecruitmentEvent #101
 ```
 
+显式 `interview_reschedule` 与「新邀请但同轮次时间已变」走同一更新路径。0 或
+多个同轮次目标仍进入 `UNCERTAIN_RESCHEDULE`。见第 88.3 节。
+
 ---
 
 # 43. Entity Resolution
@@ -1748,6 +1763,9 @@ NEEDS_REVIEW
 ```
 
 LLM 不得擅自选一个。
+
+`126.com` / `163.com` / `qq.com` / `gmail.com` 等消费邮箱域名永不作为雇主
+`DOMAIN_EXACT` 证据。见第 88.1 节。
 
 ---
 
@@ -2086,6 +2104,9 @@ WAITING FOR RESULT
 
 NEEDS REVIEW
 ```
+
+`offer` / `rejection` / `application_received` 的 ACTIVE 事件进入 `NEW UPDATES`,
+不要求事件时刻落在当天。见第 88.4 节。
 
 ## Daily Brief → Review 强制跳转规则
 
@@ -4130,10 +4151,11 @@ Flex Consumption 从零唤醒队列 worker 曾不可靠,因此每分钟的 dispa
   直接返回既有结果;`start_run` 的源邮件更新永不把 `processed/ignored` 回置。
 - **时区评审重绑定**:人工选定 IANA 时区后,抽取出的挂钟时间(包括模型臆造偏移的
   aware 值)按所选时区**重绑定**——评审改变绝对时间,而不只是标签。
-- **评审后仍不可解析的时间显式失败**:`plan_state_transition` 在
-  `mutations_allowed=False` 时抛 `TimeEvidenceUnresolvedError`(错误码即原因,如
-  `EVENT_DATETIME_UNRESOLVED`),运行标 FAILED、控制台可见——禁止"评审成功但
-  面试凭空消失"的静默完成。
+- **不可解析时间先评审、再 fail-closed**:`DATETIME_UNRESOLVED` /
+  `DEADLINE_UNRESOLVED` 不再并入时区选择题。时区选定后若挂钟仍为空,进入
+  `DATETIME_CONFLICT`(`use_override` + `YYYY-MM-DD HH:MM`)。仅当人工补时后
+  仍不可用时,`plan_state_transition` 才抛 `TimeEvidenceUnresolvedError`。
+  见第 88 章。
 - **终态不互翻**:`REJECTED ↔ OFFER` 不允许由后续邮件自动翻转;任何终态变更都
   必须是人工决策。
 - **未归一化角色不自动挂载**:邮件写明角色但归一化失败时,即使公司只有一个开放
@@ -4166,10 +4188,10 @@ scheme);新增 `POST /auth/logout`;评审表单对非 UTF-8 载荷返回重定�
   迁移/恢复后同一封邮件可能以新 ID 二次摄取(单用户专用求职邮箱,概率极低)。
   若未来必须切换,需要一次性迁移:清空 delta 游标 + 以 `internet_message_id`
   为辅键去重。日历客户端保持 ImmutableId 不变。
-- **`DATETIME_CONFLICT` 评审路径在生产不可达**。`TIMEZONE_CONFLICT`(模型自相
-  矛盾的时区断言)是 ERROR 级校验,fail-closed 直接判 `LLM_SCHEMA_INVALID`,
-  不进入评审;`use_extracted` 选项因此无效。保留死路径而非改造:让模型自相矛盾
-  的输出失败可见,优于引导人工"信任冲突证据"。
+- **`TIMEZONE_CONFLICT` → `use_extracted` 仍不可达**。模型自相矛盾的时区断言
+  仍是 ERROR 级校验,直接 `LLM_SCHEMA_INVALID`。`DATETIME_CONFLICT` 类型本身
+  已复用于不可解析挂钟的 `use_override` 路径(第 88 章);`use_extracted` 选项
+  对 `TIMEZONE_CONFLICT` 仍然无效,有意保留。
 - **日历"先建事件、后存链接"的窗口**。Graph `transactionId` 以语义指纹为键,
   同指纹重建幂等;仅当落库失败且随后指纹变化时可能产生重复占位事件。修复需要
   两阶段提交,复杂度不成比例;残余风险接受,靠人工日历清理兜底。
@@ -4183,3 +4205,63 @@ scheme);新增 `POST /auth/logout`;评审表单对非 UTF-8 载荷返回重定�
   由租约吸收为无害 no-op,不引入去重表。
 - **`uncertain` 的 Brief 永不自动重试**。可能造成当日漏发,但重复邮件的代价
   高于漏发(人工可随时手动补发);这是刻意的至多一次取舍。
+
+# 88. 126 转发、时间补录与日程去重(2026-08-14)
+
+生产邮箱是「126 求职邮箱自动转发 → 专用 Outlook」。首次可靠性修订之后,review
+结束仍不进 Daily Brief:外层 `From` 恒为 126,原始招聘方只在 Outlook 转发头里;
+`DATETIME_UNRESOLVED` 被误当成时区题;未解析时间的语义指纹互相碰撞。本章是对
+§15/§16/§17/§34/§39/§42/§43/§54 与第 86.4 节的修订。
+
+## 88.1 原始发件人优先于 126 外壳(修订 §11)
+
+规范化在 HTML 转文本之后解析最深一层转发信封,但**只有真实转发才替换 Graph
+作者**:
+
+- 外层是个人邮箱(`126.com` / `163.com` / `qq.com` / `gmail.com` 等消费域)、
+  内层是非消费域 → 采用内层招聘方姓名、地址、主题和正文;
+- 外层已是招聘方、引用块里才是 126 → **不替换**(招聘方回信引用候选人邮箱
+  不得把后续证据塌缩到 126);
+- 两层都是公司域或都是消费域 → 仅当正文出现明确转发标记
+  (`转发的邮件` / `Forwarded message` / `Original Message`)时采用内层。
+
+Outlook `#divRplyFwdMsg` 常无「转发的邮件」横幅,且把 `From:` 与地址拆成两行。
+HTML 规范化不得把含 `From`/`发件人` + `Sent`/`主题` 的节点当引用历史删除;
+解析器必须接受空值邮件头的续行。`is_consumer_mailbox_domain` 禁止消费域赢得
+公司 `DOMAIN_EXACT` 匹配,避免所有 126 转发被当成同一雇主。
+
+## 88.2 时间评审顺序(修订 §15/§34)
+
+校验问题按下列顺序中断,每种原因只问一次:
+
+1. `TIMEZONE_AMBIGUOUS` → `TIMEZONE_AMBIGUITY`(伦敦 / 上海 / other IANA);
+2. `DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED` → `DATETIME_CONFLICT`,
+   选项为 `use_override`(必填 `YYYY-MM-DD HH:MM`,不臆造时区)或 `ignore`;
+3. 其余抽取歧义与公司/申请歧义。
+
+`use_override` 写入 `reviewed_event_datetime` 或 `reviewed_deadline`,再按已选
+IANA 时区重绑定挂钟。`plan_state_transition` 的 fail-closed 仍保留,但只覆盖
+「人工已补时仍不可用」。评审恢复若抛 `ApplicationError`,HTTP 回到同一 review
+页并带不透明错误码,不再返回 502 JSON。
+
+## 88.3 日程重复与改期(修订 §39)
+
+领域事件与 Outlook 日历是两层判定:
+
+- **语义重复**:指纹含公司、角色、事件类型、轮次、**已解析**的
+  `event_datetime`/`deadline`。同一申请上指纹命中 → `semantic_duplicate`,
+  不新建事件、不改日历。
+- **未解析时间不互吞**:两端时间都为空时指纹会相同;此时跳过指纹去重,避免
+  两封不同 126 转发面试塌成一条。
+- **改期**:`interview_reschedule` 仍按同轮次活跃面试更新;招聘方常把改期写成
+  新邀请,因此同轮次唯一活跃面试且时间变化 → `interview_time_changed`,更新
+  已有事件而非新建。
+- **日历**:`calendar_links` 一对一。内容指纹不变则跳过 Graph;指纹变了则
+  `PATCH` 已有事件;`transactionId` 仍以事件身份 + 内容指纹为键。
+
+## 88.4 Daily Brief 覆盖
+
+`offer` / `rejection` / `application_received` 的 ACTIVE 事件进入 `NEW UPDATES`,
+不再要求当天时刻。面试/测评栏目规则不变。已发送的当日 Brief 邮件仍至多一次;
+预览以 `/brief/today` 为准。失败邮件可用控制台 `process-pending` 重跑——新操作
+生成新的 `processing_run_id`,不受「终态运行不可重入」阻挡。

@@ -51,9 +51,15 @@ resume after deployment.
 - `app.review_items` stores a stable typed question, allowed choices, resolution and optimistic
   version. It never contains the checkpoint payload.
 - `agent_checkpoint.*` contains the LangGraph checkpointer tables isolated from `app.*`.
-- `TIMEZONE_AMBIGUITY`, `APPLICATION_AMBIGUITY` and `DATETIME_CONFLICT` pause through
-  `interrupt()`. Resume uses a typed `ReviewDecision`; invalid/stale decisions do not advance the
-  workflow.
+- `TIMEZONE_AMBIGUITY` pauses only for `TIMEZONE_AMBIGUOUS`. Resume rebinds extracted
+  wall-clock values to the chosen IANA zone.
+- `DATETIME_CONFLICT` then pauses for `DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED` with
+  `use_override` (`YYYY-MM-DD HH:MM`) or `ignore`. The override is rebound to the reviewed
+  timezone before planning. `use_extracted` remains unused for timezone conflicts.
+- `APPLICATION_AMBIGUITY` also pauses through `interrupt()`. Resume uses a typed
+  `ReviewDecision`; invalid/stale decisions do not advance the workflow.
+- A workflow `ApplicationError` after resume redirects back to the same review page with an
+  opaque error code. It does not return raw 502 JSON.
 - `UNCERTAIN_RESCHEDULE` pauses when zero or multiple active interviews could be the target. Resume
   may select one candidate, explicitly treat the evidence as a new interview, or ignore it.
 - `UNSAFE_CALENDAR_UPDATE` pauses when a linked event disappeared or another Calendar invariant

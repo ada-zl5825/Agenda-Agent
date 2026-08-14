@@ -32,7 +32,13 @@ class ReviewHtmlRenderer:
             f"<h1>Reviews</h1>{cards}",
         )
 
-    def detail(self, detail: ReviewDetail, *, csrf_token: str) -> str:
+    def detail(
+        self,
+        detail: ReviewDetail,
+        *,
+        csrf_token: str,
+        error: str | None = None,
+    ) -> str:
         age = self._age(detail.created_at, detail.resolved_at or datetime.now(UTC))
         header = self._table(
             {
@@ -106,9 +112,15 @@ class ReviewHtmlRenderer:
                 "workflow_status": detail.run_status,
             }
         )
+        banner = (
+            f'<p class="error">Workflow failed: {escape(error)}</p>'
+            if error
+            else ""
+        )
         content = (
             '<nav><a href="/agent">Agent console</a> &middot; '
             '<a href="/reviews">&larr; Reviews</a></nav><h1>Review detail</h1>'
+            + banner
             + self._section("Header", header)
             + self._section("Source email", source)
             + self._section("Application", application)
@@ -134,8 +146,9 @@ class ReviewHtmlRenderer:
             for choice in detail.allowed_choices
         )
         override = (
-            '<label>Typed override <input name="override_value" autocomplete="off"></label>'
-            if "other" in detail.allowed_choices
+            '<label>Typed override <input name="override_value" autocomplete="off" '
+            'placeholder="YYYY-MM-DD HH:MM or IANA timezone"></label>'
+            if {"other", "use_override"} & set(detail.allowed_choices)
             else ""
         )
         return (
@@ -231,6 +244,8 @@ class ReviewHtmlRenderer:
             ".data{border-collapse:collapse;width:100%}.data th,.data td{"
             "border-bottom:1px solid #eee;text-align:left;padding:8px;vertical-align:top}"
             ".choice{display:block;padding:8px}button{margin-top:12px;"
-            "padding:10px 18px}</style></head><body>"
+            "padding:10px 18px}.error{color:#991b1b;background:#fef2f2;"
+            "border:1px solid #fecaca;border-radius:8px;padding:10px 12px}"
+            "</style></head><body>"
             f"{content}</body></html>"
         )

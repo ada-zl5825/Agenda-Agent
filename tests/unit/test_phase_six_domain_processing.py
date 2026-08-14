@@ -154,6 +154,7 @@ def _event(
     *,
     fingerprint: str | None = None,
     round_name: str | None = "first round",
+    starts_at: datetime | None = datetime(2026, 8, 19, 13, tzinfo=UTC),
 ) -> EventSnapshot:
     return EventSnapshot(
         id=event_id,
@@ -161,7 +162,7 @@ def _event(
         type=RecruitmentEventType.INTERVIEW,
         status=EventStatus.ACTIVE,
         round=round_name,
-        starts_at=datetime(2026, 8, 19, 13, tzinfo=UTC),
+        starts_at=starts_at,
         deadline_at=None,
         timezone="BST",
         source_datetime_text="19 August 2026 at 14:00 BST",
@@ -223,6 +224,42 @@ async def test_reviewed_create_new_is_preserved_in_transition_plan() -> None:
     assert application.kind is ApplicationResolutionKind.CREATE
     assert plan.create_application
     assert plan.reviewed_create_new_application
+
+
+@pytest.mark.asyncio
+async def test_undated_interviews_do_not_collapse_into_one_event() -> None:
+    first = _evidence(RecruitmentEventType.INTERVIEW, starts_at=None)
+    second = first.model_copy(
+        update={"source_datetime_text": "25 August 2026 at 10:00"}
+    )
+    existing = _event(fingerprint=semantic_fingerprint(first), starts_at=None)
+    service = RecruitmentDomainService(
+        StubStore(linked=_application(), events=(existing,))
+    )
+
+    event = await service.resolve_event(second, await service.resolve_application(second))
+
+    assert event.kind is EventResolutionKind.CREATE
+    assert event.event_id != EVENT_ID
+
+
+@pytest.mark.asyncio
+async def test_later_interview_email_updates_the_same_round_instead_of_duplicating() -> None:
+    moved = _evidence(
+        RecruitmentEventType.INTERVIEW,
+        starts_at=datetime(2026, 8, 25, 13, tzinfo=UTC),
+    )
+    service = RecruitmentDomainService(
+        StubStore(linked=_application(), events=(_event(),))
+    )
+
+    event = await service.resolve_event(moved, await service.resolve_application(moved))
+    plan = service.plan_transition(moved, await service.resolve_application(moved), event)
+
+    assert event.kind is EventResolutionKind.RESCHEDULE
+    assert event.reason == "interview_time_changed"
+    assert event.event_id == EVENT_ID
+    assert plan.event.kind is EventMutationKind.UPDATE
 
 
 @pytest.mark.asyncio

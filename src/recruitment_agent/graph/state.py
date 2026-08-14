@@ -32,6 +32,8 @@ class RecruitmentGraphState(RecruitmentGraphInput):
     review_resume_stage: NotRequired[str]
     reviewed_company_id: NotRequired[str | None]
     reviewed_timezone: NotRequired[str | None]
+    reviewed_event_datetime: NotRequired[str | None]
+    reviewed_deadline: NotRequired[str | None]
     force_create_application: NotRequired[bool]
     selected_application_id: NotRequired[str | None]
     selected_event_id: NotRequired[str | None]
