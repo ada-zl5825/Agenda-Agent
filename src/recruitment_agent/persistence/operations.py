@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -42,10 +44,32 @@ from recruitment_agent.persistence.models import (
 class SqlAlchemyOperationsStore:
     """Atomic controls, leases, and privacy-safe operational projections."""
 
+    _CONTROL_CONNECT_RETRY_DELAYS = (0.5, 1.0, 2.0)
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
     async def ensure_control(
+        self,
+        *,
+        account_id: UUID,
+        defaults: RuntimeControlDefaults,
+        now: datetime,
+    ) -> RuntimeControl:
+        for delay in (*self._CONTROL_CONNECT_RETRY_DELAYS, None):
+            try:
+                return await self._ensure_control_once(
+                    account_id=account_id,
+                    defaults=defaults,
+                    now=now,
+                )
+            except (InterfaceError, OperationalError):
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+        raise AssertionError("runtime control retry loop exhausted")
+
+    async def _ensure_control_once(
         self,
         *,
         account_id: UUID,
