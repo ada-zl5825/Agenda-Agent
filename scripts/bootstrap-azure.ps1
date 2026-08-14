@@ -316,6 +316,7 @@ Set-GitHubVariable -Name "AZURE_RESOURCE_GROUP" -Value $ResourceGroupName
 Set-GitHubVariable -Name "AZURE_FUNCTIONAPP_NAME" -Value $functionAppName
 Set-GitHubVariable -Name "MICROSOFT_CLIENT_ID" -Value $microsoftClientId
 Set-GitHubVariable -Name "MICROSOFT_CONNECTION_ID" -Value $microsoftConnectionId
+Set-GitHubVariable -Name "ADMIN_MICROSOFT_HOME_ACCOUNT_ID" -Value ""
 
 Set-GitHubSecret -Name "POSTGRES_ADMIN_PASSWORD" -Value $postgresPassword
 Set-GitHubSecret -Name "MICROSOFT_CLIENT_SECRET" -Value ([string] $clientCredential.password)

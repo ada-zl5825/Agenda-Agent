@@ -75,6 +75,14 @@ The automated suite covers:
 - paused-state-only delta cursor reset and privacy-safe status projections; and
 - application-only versus infrastructure deployment scope selection.
 
+The visual Phase 9A console tests additionally cover signed-session redirects, action/version-bound
+CSRF, account scoping, escaped privacy-safe HTML, optimistic switch updates, bounded manual workflow
+fan-out, idempotent operation keys, asynchronous status rendering, and same-day Daily Brief delivery.
+They also prove that administrator login discards its temporary MSAL cache, explicit mailbox
+connection is bound to the initiating admin session, unapproved administrators are rejected,
+recipient changes are normalized/versioned, and a real mailbox identity change clears the previous
+delta cursor in the optional PostgreSQL integration suite.
+
 The Docker-backed PostgreSQL migration/upsert tests run when `RUN_POSTGRES_INTEGRATION=1`.
 They cover Graph email metadata, encrypted secure-link persistence, company seed idempotency,
 legacy application company-name migration, Phase 4.5 audit/candidate idempotency, a Phase 5

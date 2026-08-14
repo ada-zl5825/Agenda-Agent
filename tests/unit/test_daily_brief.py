@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
@@ -11,6 +13,7 @@ from recruitment_agent.application.daily_brief import (
 from recruitment_agent.application.errors import BriefSendUncertainError
 from recruitment_agent.briefs.models import BriefItem, BriefSection, DailyBriefSnapshot
 from recruitment_agent.briefs.renderer import DailyBriefRenderer, RenderedBrief
+from recruitment_agent.jobs import daily_brief as daily_brief_job
 from recruitment_agent.jobs.daily_brief import is_daily_brief_delivery_hour
 from recruitment_agent.links.encryption import ActionLinkEncryptor
 from recruitment_agent.links.key_provider import StaticLinkKeyProvider
@@ -38,6 +41,34 @@ def test_delivery_hour_uses_london_dst_instead_of_utc_cron_time() -> None:
         timezone="Europe/London",
         local_hour=8,
     )
+
+
+@pytest.mark.asyncio
+async def test_manual_daily_brief_bypasses_timer_hour_but_keeps_service_idempotency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_id = uuid4()
+    calls: list[tuple[UUID, str]] = []
+
+    class Settings:
+        microsoft_connection_id = account_id
+
+    class Service:
+        async def send_today(self, *, account_id: UUID, recipient: str) -> bool:
+            calls.append((account_id, recipient))
+            return True
+
+    @asynccontextmanager
+    async def service_context() -> AsyncIterator[Service]:
+        yield Service()
+
+    monkeypatch.setattr(daily_brief_job, "get_microsoft_settings", lambda: Settings())
+    monkeypatch.setattr(daily_brief_job, "_daily_brief_service", service_context)
+
+    assert await daily_brief_job.send_daily_brief_now(
+        recipient="configured@example.test"
+    )
+    assert calls == [(account_id, "configured@example.test")]
 
 
 class Store:

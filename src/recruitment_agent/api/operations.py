@@ -282,6 +282,23 @@ async def submit_cursor_reset(
     )
 
 
+@router.post(
+    "/api/v1/ops/operations/daily-brief",
+    response_model=OperationResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_daily_brief(
+    _authorized: Authorized,
+    service: Service,
+    idempotency_key: IdempotencyKey,
+) -> OperationResponse:
+    return await _submit(
+        service,
+        operation_type=OperationType.SEND_DAILY_BRIEF,
+        idempotency_key=idempotency_key,
+    )
+
+
 @router.get(
     "/api/v1/ops/operations/{operation_id}",
     response_model=OperationResponse,

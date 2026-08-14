@@ -7,6 +7,7 @@ from recruitment_agent.persistence.base import Base
 def test_phase_four_five_tables_use_application_schema() -> None:
     expected_tables = {
         "app.action_items",
+        "app.admin_identities",
         "app.application_status_history",
         "app.applications",
         "app.calendar_links",
@@ -32,6 +33,15 @@ def test_phase_four_five_tables_use_application_schema() -> None:
 
     assert set(Base.metadata.tables) == expected_tables
     assert all(table.schema == "app" for table in Base.metadata.sorted_tables)
+
+
+def test_admin_identity_is_separate_from_delegated_mailbox_credentials() -> None:
+    admins = Base.metadata.tables["app.admin_identities"]
+    connections = Base.metadata.tables["app.microsoft_connections"]
+
+    assert set(admins.c.keys()) >= {"home_account_id", "tenant_id", "enabled"}
+    assert {"token_cache_ciphertext", "token_cache_nonce"}.isdisjoint(admins.c.keys())
+    assert "home_account_id" in connections.c
 
 
 def test_application_company_identity_uses_company_id_and_raw_evidence() -> None:

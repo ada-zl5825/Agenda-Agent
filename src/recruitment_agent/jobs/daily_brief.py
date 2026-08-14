@@ -16,6 +16,7 @@ from recruitment_agent.config import (
     get_microsoft_settings,
     get_settings,
 )
+from recruitment_agent.domain.recipient import normalize_recipient_address
 from recruitment_agent.links.azure import azure_link_key_provider
 from recruitment_agent.links.encryption import ActionLinkEncryptor
 from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
@@ -27,7 +28,7 @@ from recruitment_agent.persistence.secure_links import SqlAlchemySecureLinkRepos
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
 
 
-async def run_daily_brief_job(*, force: bool = False) -> bool | None:
+async def run_daily_brief_job(*, recipient: str, force: bool = False) -> bool | None:
     settings = get_microsoft_settings()
     if not force and not settings.daily_brief_enabled:
         return None
@@ -39,11 +40,17 @@ async def run_daily_brief_job(*, force: bool = False) -> bool | None:
         local_hour=settings.daily_brief_local_hour,
     ):
         return None
-    assert settings.daily_brief_recipient is not None
+    return await send_daily_brief_now(recipient=recipient)
+
+
+async def send_daily_brief_now(*, recipient: str) -> bool:
+    """Send today's idempotent Brief without applying the timer-hour filter."""
+    settings = get_microsoft_settings()
+    normalized_recipient = normalize_recipient_address(recipient)
     async with _daily_brief_service() as service:
         return await service.send_today(
             account_id=settings.microsoft_connection_id,
-            recipient=settings.daily_brief_recipient,
+            recipient=normalized_recipient,
         )
 
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import hmac
 import json
 import secrets
 from collections.abc import Mapping
@@ -20,6 +21,7 @@ from recruitment_agent.config.settings import MicrosoftSettings
 from recruitment_agent.domain.ports import Clock
 from recruitment_agent.microsoft.auth_contracts import (
     AuthorizationCompletion,
+    AuthorizationPurpose,
     AuthorizationStart,
     JsonObject,
     MicrosoftAuthStore,
@@ -30,6 +32,8 @@ from recruitment_agent.microsoft.auth_contracts import (
 )
 from recruitment_agent.microsoft.crypto import AesGcmCipher
 from recruitment_agent.microsoft.scopes import GRAPH_DELEGATED_SCOPES
+
+ADMIN_LOGIN_SCOPES: tuple[str, ...] = ("User.Read",)
 
 
 class DefaultMsalClientFactory:
@@ -70,7 +74,36 @@ class MicrosoftAuthorizationService:
         self._clock = clock
         self._client_factory = client_factory or DefaultMsalClientFactory(settings)
 
-    async def start_authorization(self) -> AuthorizationStart:
+    async def start_admin_authorization(self) -> AuthorizationStart:
+        """Authenticate an allowlisted administrator without replacing Graph tokens."""
+        return await self._start_authorization(
+            scopes=ADMIN_LOGIN_SCOPES,
+            purpose=AuthorizationPurpose.ADMIN_LOGIN,
+            initiated_by=None,
+        )
+
+    async def start_mailbox_authorization(
+        self,
+        *,
+        initiated_by: str,
+    ) -> AuthorizationStart:
+        """Start an explicit administrator-bound Outlook connection change."""
+        normalized_initiator = initiated_by.strip()
+        if not normalized_initiator or len(normalized_initiator) > 255:
+            raise AuthenticationFailedError("mailbox authorization requires an administrator")
+        return await self._start_authorization(
+            scopes=GRAPH_DELEGATED_SCOPES,
+            purpose=AuthorizationPurpose.MAILBOX_CONNECTION,
+            initiated_by=normalized_initiator,
+        )
+
+    async def _start_authorization(
+        self,
+        *,
+        scopes: tuple[str, ...],
+        purpose: AuthorizationPurpose,
+        initiated_by: str | None,
+    ) -> AuthorizationStart:
         connection_id = self._settings.microsoft_connection_id
         await self._store.ensure_connection(connection_id)
         # Interactive authorization must not reuse the persisted MSAL cache. Reusing it
@@ -80,7 +113,7 @@ class MicrosoftAuthorizationService:
         state = secrets.token_urlsafe(32)
         flow = await asyncio.to_thread(
             client.initiate_auth_code_flow,
-            GRAPH_DELEGATED_SCOPES,
+            scopes,
             redirect_uri=str(self._settings.microsoft_redirect_uri),
             state=state,
             prompt="select_account",
@@ -90,8 +123,14 @@ class MicrosoftAuthorizationService:
             raise AuthenticationFailedError("MSAL did not produce an authorization URL")
 
         state_hash = self._hash_state(state)
+        envelope: JsonObject = {
+            "version": 1,
+            "purpose": purpose.value,
+            "initiated_by": initiated_by,
+            "flow": flow,
+        }
         encrypted_flow = self._cipher.encrypt(
-            json.dumps(flow, separators=(",", ":")).encode("utf-8"),
+            json.dumps(envelope, separators=(",", ":")).encode("utf-8"),
             context=self._flow_context(state_hash),
         )
         expires_at = self._clock.now() + self._FLOW_TTL
@@ -111,6 +150,8 @@ class MicrosoftAuthorizationService:
     async def complete_authorization(
         self,
         auth_response: Mapping[str, str],
+        *,
+        admin_home_account_id: str | None = None,
     ) -> AuthorizationCompletion:
         state = auth_response.get("state")
         if state is None or not state:
@@ -125,11 +166,18 @@ class MicrosoftAuthorizationService:
             stored_flow.encrypted_flow,
             context=self._flow_context(state_hash),
         )
-        flow = cast(JsonObject, json.loads(serialized_flow))
+        purpose, initiated_by, flow = self._read_flow_envelope(serialized_flow)
+        if purpose is AuthorizationPurpose.MAILBOX_CONNECTION and (
+            initiated_by is None
+            or admin_home_account_id is None
+            or not hmac.compare_digest(initiated_by, admin_home_account_id)
+        ):
+            raise AuthenticationFailedError(
+                "mailbox authorization is not bound to this administrator session"
+            )
 
-        # Complete the flow against another fresh cache. A successful exchange then
-        # replaces the old encrypted cache instead of merging accounts into it.
-        snapshot = await self._load_snapshot(stored_flow.connection_id)
+        # Every interactive exchange uses a fresh cache. Admin login discards it;
+        # explicit mailbox connection atomically replaces the persisted Graph cache.
         cache = SerializableTokenCache()
         client = self._client_factory.create(cache)
         try:
@@ -151,15 +199,39 @@ class MicrosoftAuthorizationService:
             raise AuthenticationFailedError("MSAL account identifier is unavailable")
 
         tenant_id = self._tenant_id_from_result(result)
-        await self._save_cache(
-            snapshot=snapshot,
-            cache=cache,
-            home_account_id=home_account_id,
-            tenant_id=tenant_id,
-        )
+        if purpose is AuthorizationPurpose.ADMIN_LOGIN:
+            if not await self._is_admin_identity_allowed(
+                home_account_id=home_account_id,
+                tenant_id=tenant_id,
+            ):
+                raise AuthenticationFailedError("Microsoft administrator is not authorized")
+        else:
+            snapshot = await self._load_snapshot(stored_flow.connection_id)
+            await self._save_cache(
+                snapshot=snapshot,
+                cache=cache,
+                home_account_id=home_account_id,
+                tenant_id=tenant_id,
+            )
         return AuthorizationCompletion(
             connection_id=stored_flow.connection_id,
             home_account_id=home_account_id,
+            tenant_id=tenant_id,
+            purpose=purpose,
+        )
+
+    async def _is_admin_identity_allowed(
+        self,
+        *,
+        home_account_id: str,
+        tenant_id: str | None,
+    ) -> bool:
+        configured = self._settings.admin_microsoft_home_account_id
+        if configured is not None:
+            return hmac.compare_digest(configured, home_account_id)
+        return await self._store.is_admin_identity_allowed(
+            home_account_id=home_account_id,
+            tenant_id=tenant_id,
         )
 
     async def get_access_token(
@@ -278,6 +350,25 @@ class MicrosoftAuthorizationService:
             return None
         tenant_id = claims.get("tid")
         return tenant_id if isinstance(tenant_id, str) else None
+
+    @staticmethod
+    def _read_flow_envelope(
+        serialized: bytes,
+    ) -> tuple[AuthorizationPurpose, str | None, JsonObject]:
+        try:
+            payload = json.loads(serialized)
+            if not isinstance(payload, dict) or payload.get("version") != 1:
+                raise ValueError
+            purpose = AuthorizationPurpose(str(payload["purpose"]))
+            initiated_by_value = payload.get("initiated_by")
+            if initiated_by_value is not None and not isinstance(initiated_by_value, str):
+                raise ValueError
+            flow_value = payload["flow"]
+            if not isinstance(flow_value, dict):
+                raise ValueError
+            return purpose, initiated_by_value, cast(JsonObject, flow_value)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise AuthenticationFailedError("encrypted OAuth flow is invalid") from exc
 
     @staticmethod
     def _safe_msal_error(result: Mapping[str, Any]) -> str:

@@ -24,7 +24,7 @@ from recruitment_agent.config import (
     get_settings,
 )
 from recruitment_agent.config.settings import get_azure_openai_settings
-from recruitment_agent.jobs.daily_brief import run_daily_brief_job
+from recruitment_agent.jobs.daily_brief import run_daily_brief_job, send_daily_brief_now
 from recruitment_agent.jobs.mail_processing import (
     MailProcessingJobRequest,
     run_mail_processing_job,
@@ -46,6 +46,9 @@ class ProductionOperationHandlers(OperationHandlers):
         if result is None:
             raise RuntimeError("forced mail synchronization did not run")
         return result
+
+    async def send_daily_brief(self, *, recipient: str) -> bool:
+        return await send_daily_brief_now(recipient=recipient)
 
     async def process_email(
         self,
@@ -76,6 +79,7 @@ def runtime_control_defaults() -> RuntimeControlDefaults:
             settings.workflow_processing_enabled and settings.calendar_sync_enabled
         ),
         daily_brief_enabled=settings.daily_brief_enabled,
+        daily_brief_recipient=settings.daily_brief_recipient,
     )
 
 
@@ -85,8 +89,7 @@ def runtime_capabilities() -> RuntimeCapabilities:
         workflow_processing_available=get_azure_openai_settings().llm_enabled,
         calendar_write_available=settings.calendar_sync_enabled,
         daily_brief_available=(
-            settings.daily_brief_recipient is not None
-            and settings.public_app_base_url is not None
+            settings.public_app_base_url is not None
             and settings.web_session_signing_key is not None
         ),
     )
@@ -169,7 +172,8 @@ async def run_scheduled_daily_brief_job() -> None:
         if not runtime_capabilities().daily_brief_available:
             return
         async with operations_control_service() as service:
-            if not (await service.get_control()).daily_brief_enabled:
+            control = await service.get_control()
+            if not control.daily_brief_enabled or control.daily_brief_recipient is None:
                 return
     except Exception as exc:
         LOGGER.error(
@@ -177,4 +181,7 @@ async def run_scheduled_daily_brief_job() -> None:
             extra={"error_type": type(exc).__name__},
         )
         return
-    await run_daily_brief_job(force=True)
+    await run_daily_brief_job(
+        recipient=control.daily_brief_recipient,
+        force=True,
+    )

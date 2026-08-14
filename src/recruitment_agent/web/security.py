@@ -18,6 +18,8 @@ from recruitment_agent.domain.ports import Clock
 @dataclass(frozen=True, slots=True, kw_only=True)
 class WebSession:
     connection_id: UUID
+    admin_home_account_id: str
+    admin_tenant_id: str | None
     expires_at: datetime
     nonce: str
 
@@ -33,10 +35,21 @@ class WebSessionManager:
         self._clock = clock
         self._ttl = timedelta(seconds=ttl_seconds)
 
-    def issue(self, connection_id: UUID) -> str:
+    def issue(
+        self,
+        connection_id: UUID,
+        *,
+        admin_home_account_id: str,
+        admin_tenant_id: str | None,
+    ) -> str:
+        normalized_admin = admin_home_account_id.strip()
+        if not normalized_admin or len(normalized_admin) > 255:
+            raise ValueError("admin home account ID is invalid")
         expires_at = self._clock.now() + self._ttl
-        payload = {
+        payload: dict[str, object] = {
             "connection_id": str(connection_id),
+            "admin_home_account_id": normalized_admin,
+            "admin_tenant_id": admin_tenant_id,
             "expires_at": int(expires_at.timestamp()),
             "nonce": secrets.token_urlsafe(18),
         }
@@ -56,6 +69,12 @@ class WebSessionManager:
                 raise TypeError("session expiry must be an integer")
             session = WebSession(
                 connection_id=UUID(str(payload["connection_id"])),
+                admin_home_account_id=str(payload["admin_home_account_id"]),
+                admin_tenant_id=(
+                    None
+                    if payload.get("admin_tenant_id") is None
+                    else str(payload["admin_tenant_id"])
+                ),
                 expires_at=datetime.fromtimestamp(
                     int(expires_at_value),
                     tz=UTC,
@@ -64,6 +83,8 @@ class WebSessionManager:
             )
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise ReviewAuthenticationError("browser session is invalid") from exc
+        if not session.admin_home_account_id or len(session.admin_home_account_id) > 255:
+            raise ReviewAuthenticationError("browser session administrator is invalid")
         if session.expires_at <= self._clock.now():
             raise ReviewAuthenticationError("browser session has expired")
         return session
@@ -88,6 +109,35 @@ class WebSessionManager:
         if not hmac.compare_digest(expected, supplied):
             raise CsrfValidationError("review CSRF token is invalid")
 
+    def action_csrf_token(
+        self,
+        *,
+        session_token: str,
+        action: str,
+        version: int,
+    ) -> str:
+        """Bind a browser mutation to its session, typed action, and control version."""
+        if not action or not action.isascii() or len(action) > 80 or version < 1:
+            raise ValueError("invalid CSRF action binding")
+        message = f"csrf-action:{session_token}:{action}:{version}".encode()
+        return self._encode(hmac.digest(self._key, message, "sha256"))
+
+    def verify_action_csrf(
+        self,
+        *,
+        session_token: str,
+        action: str,
+        version: int,
+        supplied: str,
+    ) -> None:
+        expected = self.action_csrf_token(
+            session_token=session_token,
+            action=action,
+            version=version,
+        )
+        if not hmac.compare_digest(expected, supplied):
+            raise CsrfValidationError("agent console CSRF token is invalid")
+
     def issue_return_path(self, path: str) -> str:
         normalized = self.validate_return_path(path)
         expires_at = self._clock.now() + timedelta(minutes=10)
@@ -101,24 +151,24 @@ class WebSessionManager:
 
     def read_return_path(self, token: str | None) -> str:
         if token is None:
-            return "/reviews"
+            return "/agent"
         try:
             payload = self._verify_json(token, purpose="return")
             expires_at_value = payload["expires_at"]
             if not isinstance(expires_at_value, (int, str)):
-                return "/reviews"
+                return "/agent"
             expires_at = datetime.fromtimestamp(int(expires_at_value), tz=UTC)
             if expires_at <= self._clock.now():
-                return "/reviews"
+                return "/agent"
             return self.validate_return_path(str(payload["path"]))
         except (KeyError, TypeError, ValueError, OverflowError, ReviewAuthenticationError):
-            return "/reviews"
+            return "/agent"
 
     @staticmethod
     def validate_return_path(path: str) -> str:
         if not path.startswith("/") or path.startswith("//") or "?" in path or "#" in path:
-            return "/reviews"
-        return path if path.startswith(("/reviews", "/brief/")) else "/reviews"
+            return "/agent"
+        return path if path.startswith(("/agent", "/reviews", "/brief/")) else "/agent"
 
     def _sign_json(self, payload: dict[str, object], *, purpose: str) -> str:
         encoded = self._encode(

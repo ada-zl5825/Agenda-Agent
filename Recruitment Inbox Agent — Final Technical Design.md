@@ -568,6 +568,24 @@ username/password
 
 Microsoft Identity authorization-code flow 支持用户授权应用访问 Microsoft Graph；`offline_access` 用于获取后台刷新所需的 refresh capability。
 
+管理员网页登录与 Agent 的 Graph 邮箱授权必须是两个独立 purpose：
+
+```text
+/auth/login
+  → 仅验证 allowlisted Microsoft 管理员
+  → 签发短期浏览器 session
+  → 不保存或覆盖 Graph Token Cache
+
+/auth/mailbox/connect
+  → 必须由有效管理员 session 发起
+  → 显式申请 Mail / Calendar / Mail.Send scopes
+  → 成功后才替换 Agent 的加密 MSAL Token Cache
+```
+
+管理员身份保存在独立 allowlist 中，不能通过选择任意 Microsoft 账号获得控制台权限。邮箱
+连接 flow 必须与发起它的管理员 session 绑定；邮箱 `home_account_id` 发生变化时清空旧的
+delta cursor，禁止跨邮箱复用同步游标。
+
 ---
 
 # 6. Microsoft Graph Permissions
@@ -1791,6 +1809,8 @@ LangGraph checkpoint 和 domain tables 逻辑隔离。
 ```text
 users
 
+admin_identities
+
 microsoft_connections
 
 mail_sync_states
@@ -1818,6 +1838,10 @@ llm_extractions
 review_items
 
 daily_briefs
+
+runtime_controls
+
+operation_runs
 ```
 
 ---
@@ -2233,6 +2257,10 @@ Mail.Send
 DAILY_BRIEF_RECIPIENT
 ```
 
+该环境变量只作为 PostgreSQL 运行时设置的首次初始化值。之后认证管理员可以在 `/agent`
+查看和修改当前收件地址；修改使用 CSRF、邮箱格式校验和 optimistic control version，且无需
+重新部署 Azure 资源。收件地址不得进入日志、公开 status API 或 operation result。
+
 也提供：
 
 ```text
@@ -2251,6 +2279,8 @@ GET /brief/today
 GET /auth/login
 
 GET /auth/callback
+
+GET /auth/mailbox/connect
 ```
 
 ---
@@ -2270,6 +2300,23 @@ GET /status
 ```text
 GET /brief/today
 ```
+
+---
+
+## Agent Console
+
+```text
+GET /agent
+
+POST /agent/control/{switch}
+
+POST /agent/operations/{action}
+```
+
+`GET /agent` 使用 Microsoft 登录后签发的浏览器 session。所有 mutation 使用绑定 session、
+typed action 与 runtime-control version 的 CSRF token。浏览器不得接收 `OPS_API_TOKEN`。
+这里的 Microsoft 登录只验证 allowlisted 管理员；它不更新 Agent 邮箱授权。控制台提供显式
+Outlook 连接入口和 Daily Brief 收件地址设置，后者保存在 PostgreSQL runtime control 中。
 
 ---
 
@@ -2597,6 +2644,7 @@ MICROSOFT_CLIENT_ID=
 MICROSOFT_CLIENT_SECRET=
 MICROSOFT_TENANT=consumers
 MICROSOFT_REDIRECT_URI=
+ADMIN_MICROSOFT_HOME_ACCOUNT_ID=
 
 AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_DEPLOYMENT=
@@ -3518,6 +3566,14 @@ Azure Storage Queue worker using opaque operation IDs only
 
 Audited manual mail sync, bounded workflow processing and safe cursor reset
 
+Authenticated graphical Agent status and control console
+
+Allowlisted administrator login separated from explicit Outlook account connection
+
+Versioned PostgreSQL Daily Brief recipient editable from the authenticated console
+
+Idempotent manual Daily Brief queue command
+
 Application-only deployment separated from infrastructure/Key Vault deployment
 
 VNet-integrated manual Container Apps Job for allowlisted database checks, Alembic migrations,
@@ -3527,7 +3583,17 @@ and idempotent company-catalog seeding without a maintenance VM
 The control plane must never return OAuth tokens, message bodies, secret-bearing URLs, or decrypted
 links. Long-running Graph and LangGraph work must not execute inside the HTTP request. Runtime
 control is domain-adjacent operational state in PostgreSQL, not LangGraph state. Infrastructure
-deployment runs only when infrastructure, production configuration, or Key Vault structure changes.
+deployment runs only when schema migrations, infrastructure, production configuration, or Key Vault
+structure changes. A schema revision builds the immutable maintenance image but holds application
+deployment until the controlled migration Job succeeds.
+The graphical console uses a signed allowlisted-admin browser session and application services; an
+administrator login never replaces the Agent mailbox token cache. Outlook connection/replacement is
+an explicit admin-session-bound OAuth purpose. The console must never expose the operations bearer
+token to HTML or JavaScript. All browser mutations require CSRF tokens bound to the session, typed
+action and optimistic control version. The Daily Brief recipient is a versioned PostgreSQL runtime
+setting that is visible only to the authenticated administrator and excluded from logs/public status.
+Manual delivery remains queue-backed and subject to the same per-account, per-day idempotency claim
+as scheduled delivery.
 The database-maintenance Job uses a dedicated managed identity, an unversioned Key Vault reference
 to `database-url`, an immutable ACR image tag, and a PostgreSQL advisory lock for mutations. It must
 not accept arbitrary SQL or shell input and must scale to zero between manual executions.

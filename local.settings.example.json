@@ -9,6 +9,7 @@
     "MICROSOFT_TENANT": "consumers",
     "MICROSOFT_REDIRECT_URI": "http://localhost:7071/auth/callback",
     "MICROSOFT_CONNECTION_ID": "00000000-0000-0000-0000-000000000001",
+    "ADMIN_MICROSOFT_HOME_ACCOUNT_ID": "",
     "TOKEN_CACHE_ENCRYPTION_KEY": "",
     "TOKEN_CACHE_ENCRYPTION_KEY_VERSION": "v1",
     "AZURE_KEY_VAULT_URL": "https://your-vault.vault.azure.net",

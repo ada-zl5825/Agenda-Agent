@@ -89,6 +89,12 @@ def test_phase_eight_requires_independent_web_key_when_brief_is_enabled() -> Non
     assert settings.daily_brief_recipient == "me@example.test"
     assert settings.web_session_key_bytes == b"w" * 32
 
+    runtime_recipient = MicrosoftSettings(
+        **{**common, "daily_brief_recipient": None},
+        web_session_signing_key=b64encode(b"w" * 32).decode(),
+    )
+    assert runtime_recipient.daily_brief_recipient is None
+
 
 def test_disabled_daily_brief_accepts_empty_deployment_recipient() -> None:
     settings = MicrosoftSettings(
@@ -102,6 +108,25 @@ def test_disabled_daily_brief_accepts_empty_deployment_recipient() -> None:
     )
 
     assert settings.daily_brief_recipient is None
+
+
+def test_optional_admin_identity_override_is_normalized_and_bounded() -> None:
+    common = {
+        "microsoft_client_id": "client",
+        "microsoft_client_secret": "secret",
+        "microsoft_redirect_uri": "https://agent.example/auth/callback",
+        "microsoft_connection_id": uuid4(),
+        "token_cache_encryption_key": b64encode(b"t" * 32).decode(),
+    }
+
+    settings = MicrosoftSettings(
+        **common,
+        admin_microsoft_home_account_id="  opaque-admin-id  ",
+    )
+
+    assert settings.admin_microsoft_home_account_id == "opaque-admin-id"
+    with pytest.raises(ValidationError, match="ADMIN_MICROSOFT_HOME_ACCOUNT_ID"):
+        MicrosoftSettings(**common, admin_microsoft_home_account_id="invalid admin")
 
 
 def test_link_encryption_settings_validate_key_vault_boundary() -> None:

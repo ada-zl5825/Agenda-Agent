@@ -2,7 +2,7 @@
 
 面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
 Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4、Phase 4.5、Phase 5、Phase 6、
-Phase 7 与 Phase 8。
+Phase 7、Phase 8 与 Phase 9A。
 
 ## Phase 1 已实现
 
@@ -106,7 +106,9 @@ uv run seed-companies
 uv run uvicorn recruitment_agent.api.app:app --reload
 ```
 
-配置 `.env` 后，浏览器打开 `http://127.0.0.1:8000/auth/login` 完成 Microsoft 授权。
+配置 `.env` 并执行迁移后，浏览器打开 `http://127.0.0.1:8000/auth/login` 完成管理员登录，
+再从控制台点击“连接 / 更换 Outlook”建立 Agent 的 Graph 授权。管理员登录不会覆盖邮箱
+Token Cache；只有显式 Outlook 连接流程会更新它。
 回调地址必须与 Entra App Registration 中登记的 Web redirect URI 完全一致。
 
 生成 32 字节 token-cache 加密密钥的示例：
@@ -134,6 +136,7 @@ uv --cache-dir .uv-cache export --format requirements-txt --no-dev --no-hashes -
 - `MICROSOFT_TENANT=consumers`
 - `MICROSOFT_REDIRECT_URI`
 - `MICROSOFT_CONNECTION_ID`
+- `ADMIN_MICROSOFT_HOME_ACCOUNT_ID`（可选恢复/首次部署 allowlist；现有部署由迁移从当前授权播种）
 - `TOKEN_CACHE_ENCRYPTION_KEY`
 - `TOKEN_CACHE_ENCRYPTION_KEY_VERSION=v1`
 - `AZURE_KEY_VAULT_URL`
@@ -147,7 +150,7 @@ uv --cache-dir .uv-cache export --format requirements-txt --no-dev --no-hashes -
 - `AZURE_OPENAI_MAX_RETRY_ATTEMPTS=3`
 - `MAIL_SYNC_SCHEDULE=0 */10 * * * *`
 - `DAILY_BRIEF_ENABLED=false`（完成迁移和重新授权后再设为 `true`）
-- `DAILY_BRIEF_RECIPIENT`
+- `DAILY_BRIEF_RECIPIENT`（可选首次初始化值；之后由控制台数据库设置接管）
 - `DAILY_BRIEF_SCHEDULE=0 0 * * * *`（UTC 每小时唤醒）
 - `DAILY_BRIEF_LOCAL_HOUR=8`（按 `USER_TIMEZONE` 过滤，自动适配 DST）
 - `PUBLIC_APP_BASE_URL`
@@ -223,6 +226,22 @@ uv run pytest -m integration
   认领一次，传输/5xx 结果不确定时标记 `uncertain` 且不自动重发。
 - Azure Timer 每小时 UTC 唤醒，并只在 `USER_TIMEZONE` 的本地 08 点发送，以适配 Flex
   Consumption 不支持 Timer 时区设置的限制；迁移 head 为 `20260813_0009`，功能默认关闭。
+
+## Phase 9A implemented
+
+- `/agent` 提供登录后的图形化运行控制台，根路径会跳转到该页面。
+- 页面显示数据库/OAuth readiness、四个 PostgreSQL 运行时开关、能力上限、同步时间与游标、
+  安全错误码、聚合处理计数、Review 数量、Brief 状态和单次 operation 进度。
+- 页面可开启/暂停邮件同步、工作流、Calendar 写入和 Daily Brief，并可异步触发邮件同步、
+  bounded pending processing 与今日 Daily Brief 发送。
+- 管理员登录与 Agent Outlook 授权已拆分；普通 `/auth/login` 不修改 Graph Token Cache，只有
+  登录管理员主动点击“连接 / 更换 Outlook”才会更换邮箱授权，账号变化时旧 delta 游标会清空。
+- Daily Brief 当前收件地址可在认证后的控制台显示和修改；环境变量只作为数据库首次初始化值，
+  后续修改无需重新部署。地址不进入操作日志或公开 API。
+- 浏览器只使用签名 session 与 action-bound CSRF；`OPS_API_TOKEN`、OAuth token、邮件正文和
+  解密链接不会进入 HTML。
+- 手动任务继续写入 `operation_runs` 并只向 Azure Queue 发送 opaque UUID；Daily Brief 保持
+  每账户每天最多一次成功发送。迁移 head 为 `20260814_0011`。
 
 完整边界与后续 phase 见
 [最终技术设计](docs/01_FINAL_TECHNICAL_DESIGN.md) 和 [AGENTS.md](AGENTS.md)。
