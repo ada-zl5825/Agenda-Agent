@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -5,6 +7,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
+import recruitment_agent.api.agent as agent_api
 from recruitment_agent.api.agent import get_agent_console_service
 from recruitment_agent.api.app import create_app
 from recruitment_agent.api.dependencies import get_web_session_manager
@@ -159,6 +162,36 @@ class Console:
         assert account_id == self.account_id
         self.recipients.append(command)
         return self.snapshot.status.control
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_console_does_not_open_external_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = WebSessionManager(key=b"s" * 32, clock=Clock())
+    entered = False
+
+    @asynccontextmanager
+    async def unavailable_operations() -> AsyncIterator[object]:
+        nonlocal entered
+        entered = True
+        yield object()
+
+    monkeypatch.setattr(agent_api, "operations_control_service", unavailable_operations)
+    application = create_app()
+    application.dependency_overrides[get_web_session_manager] = lambda: manager
+    transport = httpx.ASGITransport(app=application)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://agent.example",
+        follow_redirects=False,
+    ) as client:
+        response = await client.get("/agent")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/auth/login?return_to=/agent"
+    assert entered is False
 
 
 @pytest.mark.asyncio
