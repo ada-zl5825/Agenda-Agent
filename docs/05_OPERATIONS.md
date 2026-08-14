@@ -365,10 +365,12 @@ forward, datetime-override, and duplicate-calendar revisions. Operational conseq
   configured local hour.
 - **Source emails**: `needs_review` is a first-class processing status meaning "waiting on a
   human"; such emails are excluded from retries and `process-pending` batches until their review
-  is resolved. Unparsed interview times now take two reviews: timezone first, then
-  `YYYY-MM-DD HH:MM` (`use_override`). A run failing with `EVENT_DATETIME_UNRESOLVED` after
-  that override means the supplied clock is still unusable; open the same review URL (the
-  resolve POST redirects there with `error=`) and correct the value, or ignore the item.
+  is resolved. Named interview times without a timezone need timezone confirmation
+  only; the extracted wall-clock is rebound to the chosen IANA zone. The
+  `YYYY-MM-DD HH:MM` override appears only when the model still could not parse a
+  clock. A run failing with `EVENT_DATETIME_UNRESOLVED` after that override means
+  the supplied clock is still unusable; open the same review URL (the resolve POST
+  redirects there with `error=`) and correct the value, or ignore the item.
   Emails already marked `failed` before this revision do not resume in place. Submit
   `process-pending` so a new `processing_run_id` is created, then complete both reviews.
   `/brief/today` is the live preview; a Daily Brief email already sent that local day is

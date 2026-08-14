@@ -948,8 +948,8 @@ resume graph
 calendar sync
 ```
 
-若时区选定后事件挂钟仍为空,不得直接 fail-closed。下一步是 `DATETIME_CONFLICT`
-(`use_override` + `YYYY-MM-DD HH:MM`)。见第 88.2 节。
+模型应抽出挂钟;人只确认时区。若时区选定后事件挂钟仍为空,下一步才是
+`DATETIME_CONFLICT`(`use_override` + `YYYY-MM-DD HH:MM`)。见第 88.2 / 88.5 节。
 
 ---
 
@@ -1467,6 +1467,9 @@ If uncertain, return null.
 
 Never infer timezone solely from company location.
 
+When the source names a date and time, extract that wall-clock even if
+the timezone is missing. Human review binds the timezone.
+
 Preserve exact date/time text from the source.
 
 Action links are represented by opaque references such as
@@ -1507,6 +1510,7 @@ Asia/Shanghai
 
 ```text
 timezone_explicit = false
+event_datetime = 抽出的挂钟(占位偏移 +00:00,不是 UTC)
 ```
 
 进入：
@@ -1515,8 +1519,8 @@ timezone_explicit = false
 NEEDS_REVIEW
 ```
 
-缺少可解析挂钟(`DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED`)与时区缺失分开评审:
-先选 IANA 时区,再人工补 `YYYY-MM-DD HH:MM`。见第 88.2 节。
+人只确认 IANA 时区;工作流把抽出的挂钟重绑定到所选时区。只有模型仍抽不出
+挂钟时,才再问 `YYYY-MM-DD HH:MM`。见第 88.2 / 88.5 节。
 
 ---
 
@@ -4151,11 +4155,11 @@ Flex Consumption 从零唤醒队列 worker 曾不可靠,因此每分钟的 dispa
   直接返回既有结果;`start_run` 的源邮件更新永不把 `processed/ignored` 回置。
 - **时区评审重绑定**:人工选定 IANA 时区后,抽取出的挂钟时间(包括模型臆造偏移的
   aware 值)按所选时区**重绑定**——评审改变绝对时间,而不只是标签。
-- **不可解析时间先评审、再 fail-closed**:`DATETIME_UNRESOLVED` /
-  `DEADLINE_UNRESOLVED` 不再并入时区选择题。时区选定后若挂钟仍为空,进入
-  `DATETIME_CONFLICT`(`use_override` + `YYYY-MM-DD HH:MM`)。仅当人工补时后
-  仍不可用时,`plan_state_transition` 才抛 `TimeEvidenceUnresolvedError`。
-  见第 88 章。
+- **不可解析时间先评审、再 fail-closed**:`recruitment-extraction-v2` 要求模型
+  抽出挂钟,时区不明只进 `TIMEZONE_AMBIGUITY`。若挂钟仍为空,
+  `DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED` 另走 `DATETIME_CONFLICT`
+  (`use_override` + `YYYY-MM-DD HH:MM`)。仅当人工补时后仍不可用时,
+  `plan_state_transition` 才抛 `TimeEvidenceUnresolvedError`。见第 88 章。
 - **终态不互翻**:`REJECTED ↔ OFFER` 不允许由后续邮件自动翻转;任何终态变更都
   必须是人工决策。
 - **未归一化角色不自动挂载**:邮件写明角色但归一化失败时,即使公司只有一个开放
@@ -4234,15 +4238,17 @@ HTML 规范化不得把含 `From`/`发件人` + `Sent`/`主题` 的节点当引�
 
 校验问题按下列顺序中断,每种原因只问一次:
 
-1. `TIMEZONE_AMBIGUOUS` → `TIMEZONE_AMBIGUITY`(伦敦 / 上海 / other IANA);
-2. `DATETIME_UNRESOLVED` / `DEADLINE_UNRESOLVED` → `DATETIME_CONFLICT`,
-   选项为 `use_override`(必填 `YYYY-MM-DD HH:MM`,不臆造时区)或 `ignore`;
-3. 其余抽取歧义与公司/申请歧义。
+1. `TIMEZONE_AMBIGUOUS` 且挂钟仍空 → 同一页确认时区并补 `YYYY-MM-DD HH:MM`
+   (`timezone_and_datetime` / `timezone_and_deadline`);手填框标明开始时间或截止日期;
+2. 仅缺时区 → `TIMEZONE_AMBIGUITY`(伦敦 / 上海 / other IANA);
+3. 时区已定但挂钟仍空 → `DATETIME_CONFLICT` 补时;确认后浏览器跳到同一封邮件的
+   下一条 open review,避免再开窗口;
+4. 其余抽取歧义与公司/申请歧义。Review 列表标题用公司/职位/事件,不用错误码。
 
-`use_override` 写入 `reviewed_event_datetime` 或 `reviewed_deadline`,再按已选
-IANA 时区重绑定挂钟。`plan_state_transition` 的 fail-closed 仍保留,但只覆盖
-「人工已补时仍不可用」。评审恢复若抛 `ApplicationError`,HTTP 回到同一 review
-页并带不透明错误码,不再返回 502 JSON。
+人选时区后,抽出的挂钟按所选 IANA 时区重绑定;`+00:00` 占位偏移不是 UTC。
+`use_override` 只覆盖模型抽不出挂钟的残差。`plan_state_transition` 的
+fail-closed 仍保留,但只覆盖「人工已补时仍不可用」。评审恢复若抛
+`ApplicationError`,HTTP 回到同一 review 页并带不透明错误码,不再返回 502 JSON。
 
 ## 88.3 日程重复与改期(修订 §39)
 
@@ -4265,3 +4271,11 @@ IANA 时区重绑定挂钟。`plan_state_transition` 的 fail-closed 仍保留,�
 不再要求当天时刻。面试/测评栏目规则不变。已发送的当日 Brief 邮件仍至多一次;
 预览以 `/brief/today` 为准。失败邮件可用控制台 `process-pending` 重跑——新操作
 生成新的 `processing_run_id`,不受「终态运行不可重入」阻挡。
+
+## 88.5 挂钟抽取,时区由人确认(2026-08-14)
+
+`recruitment-extraction-v1` 要求「无时区则 `event_datetime` 留空」,导致大多数
+126 招聘信在人选时区后还要手填 `YYYY-MM-DD HH:MM`。`recruitment-extraction-v2`
+改为:正文写了日期和时间就必须抽出挂钟,禁止根据中文/公司/域名臆造时区。
+结构化 schema 需要偏移时使用非权威 `+00:00` 占位,不得写入 `timezone_text`。
+人只监督确认 IANA 时区。见 §33/§34。

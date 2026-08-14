@@ -13,7 +13,7 @@ from recruitment_agent.extraction.models import (
     RecruitmentExtraction,
     RecruitmentExtractionRequest,
 )
-from recruitment_agent.extraction.prompt import RECRUITMENT_EXTRACTION_PROMPT_V1
+from recruitment_agent.extraction.prompt import RECRUITMENT_EXTRACTION_PROMPT_V2
 
 _AZURE_OPENAI_CLASSIC_SCOPE = "https://cognitiveservices.azure.com/.default"
 _FOUNDRY_SCOPE = "https://ai.azure.com/.default"
@@ -148,7 +148,7 @@ def create_azure_recruitment_extraction_model(
     )
     runnable = cast(
         StructuredExtractionRunnable,
-        RECRUITMENT_EXTRACTION_PROMPT_V1 | structured_model,
+        RECRUITMENT_EXTRACTION_PROMPT_V2 | structured_model,
     )
     return LangChainRecruitmentExtractionModel(
         runnable=runnable,

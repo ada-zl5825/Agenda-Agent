@@ -9,11 +9,15 @@ from uuid import UUID
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ReviewQueueItem:
     id: UUID
+    source_email_id: UUID
     review_type: str
     reason: str
     created_at: datetime
     company: str | None
     role: str | None
+    subject: str | None
+    event_type: str | None
+    source_time_text: str | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True, repr=False)

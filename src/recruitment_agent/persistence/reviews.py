@@ -34,14 +34,20 @@ class SqlAlchemyReviewStore(ReviewStore):
         statement = (
             select(
                 ReviewItemModel,
+                SourceEmailModel,
                 ApplicationModel.role_name,
                 ApplicationModel.raw_company_name,
                 CompanyModel.display_name,
+                LlmExtractionModel.extraction,
             )
             .join(ProcessingRunModel, ProcessingRunModel.id == ReviewItemModel.processing_run_id)
             .join(SourceEmailModel, SourceEmailModel.id == ProcessingRunModel.source_email_id)
             .outerjoin(ApplicationModel, ApplicationModel.id == SourceEmailModel.application_id)
             .outerjoin(CompanyModel, CompanyModel.id == ApplicationModel.company_id)
+            .outerjoin(
+                LlmExtractionModel,
+                LlmExtractionModel.processing_run_id == ProcessingRunModel.id,
+            )
             .where(
                 SourceEmailModel.account_id == account_id,
                 ReviewItemModel.status == "open",
@@ -50,17 +56,45 @@ class SqlAlchemyReviewStore(ReviewStore):
         )
         async with self._session_factory() as session:
             rows = (await session.execute(statement)).all()
-        return tuple(
-            ReviewQueueItem(
-                id=review.id,
-                review_type=review.review_type,
-                reason=review.reason,
-                created_at=review.created_at,
-                company=display_name or raw_company_name,
-                role=role_name,
+        items: list[ReviewQueueItem] = []
+        for (
+            review,
+            source,
+            role_name,
+            raw_company_name,
+            display_name,
+            extraction,
+        ) in rows:
+            payload = extraction if isinstance(extraction, dict) else {}
+            company_raw = payload.get("company_raw")
+            role_raw = payload.get("role_raw")
+            items.append(
+                ReviewQueueItem(
+                    id=review.id,
+                    source_email_id=source.id,
+                    review_type=review.review_type,
+                    reason=review.reason,
+                    created_at=review.created_at,
+                    company=display_name
+                    or raw_company_name
+                    or (company_raw if isinstance(company_raw, str) else None),
+                    role=role_name or (role_raw if isinstance(role_raw, str) else None),
+                    subject=_SUBJECT_SANITIZER.sanitize(source.subject).text,
+                    event_type=(
+                        payload.get("event_type")
+                        if isinstance(payload.get("event_type"), str)
+                        else None
+                    ),
+                    source_time_text=(
+                        payload.get("source_datetime_text")
+                        if isinstance(payload.get("source_datetime_text"), str)
+                        else payload.get("source_deadline_text")
+                        if isinstance(payload.get("source_deadline_text"), str)
+                        else None
+                    ),
+                )
             )
-            for review, role_name, raw_company_name, display_name in rows
-        )
+        return tuple(items)
 
     async def get_detail(
         self,

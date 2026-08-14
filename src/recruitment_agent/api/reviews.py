@@ -91,6 +91,7 @@ async def resolve_review(
     form = parse_qs(decoded_body, keep_blank_values=True)
     choice = form.get("choice", [""])[0]
     override = form.get("override_value", [""])[0].strip() or None
+    clock_override = form.get("clock_override", [""])[0].strip() or None
     csrf = form.get("csrf_token", [""])[0]
     try:
         version = int(form.get("expected_version", ["0"])[0])
@@ -104,19 +105,26 @@ async def resolve_review(
         supplied=csrf,
     )
     try:
-        await service.resolve(
+        resolved = await service.resolve(
             account_id=session.connection_id,
             review_id=review_id,
             choice=choice,
             override_value=override,
             expected_version=version,
+            clock_override=clock_override,
         )
     except ApplicationError as exc:
         return RedirectResponse(
             url=f"/reviews/{review_id}?error={quote(exc.code, safe='')}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
+    nxt = await service.next_open_for_source(
+        account_id=session.connection_id,
+        source_email_id=resolved.source_email_id,
+        excluding_review_id=review_id,
+    )
+    destination = f"/reviews/{nxt}" if nxt is not None else "/reviews"
     return RedirectResponse(
-        url=f"/reviews/{review_id}",
+        url=destination,
         status_code=status.HTTP_303_SEE_OTHER,
     )

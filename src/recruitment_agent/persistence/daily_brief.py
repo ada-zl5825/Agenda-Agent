@@ -22,12 +22,14 @@ from recruitment_agent.persistence.models import (
     ApplicationModel,
     CompanyModel,
     DailyBriefModel,
+    LlmExtractionModel,
     ProcessingRunModel,
     RecruitmentEventModel,
     ReviewItemModel,
     SecureLinkModel,
     SourceEmailModel,
 )
+from recruitment_agent.reviews.presentation import review_action_label
 
 _BRIEF_NAMESPACE = UUID("75ead7e4-d951-43c1-b327-cef60ed3ba89")
 _OUTLOOK_HOSTS = frozenset(
@@ -115,6 +117,7 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
                         SourceEmailModel,
                         ApplicationModel,
                         CompanyModel.display_name,
+                        LlmExtractionModel.extraction,
                     )
                     .join(
                         ProcessingRunModel,
@@ -129,6 +132,10 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
                         ApplicationModel.id == SourceEmailModel.application_id,
                     )
                     .outerjoin(CompanyModel, CompanyModel.id == ApplicationModel.company_id)
+                    .outerjoin(
+                        LlmExtractionModel,
+                        LlmExtractionModel.processing_run_id == ProcessingRunModel.id,
+                    )
                     .where(
                         SourceEmailModel.account_id == account_id,
                         ReviewItemModel.status == "open",
@@ -220,19 +227,24 @@ class SqlAlchemyDailyBriefStore(DailyBriefStore):
                 )
             )
 
-        for review, source, application, company in review_rows:
+        for review, source, application, company, extraction in review_rows:
+            payload = extraction if isinstance(extraction, dict) else {}
+            company_raw = payload.get("company_raw")
+            role_raw = payload.get("role_raw")
             items.append(
                 BriefItem(
                     identity=f"review:{review.id}",
                     section=BriefSection.NEEDS_REVIEW,
                     company=(
-                        None
-                        if application is None
-                        else company or application.raw_company_name
+                        (None if application is None else company or application.raw_company_name)
+                        or (company_raw if isinstance(company_raw, str) else None)
                     ),
-                    role=None if application is None else application.role_name,
-                    stage=review.review_type,
-                    detail=review.reason,
+                    role=(
+                        (None if application is None else application.role_name)
+                        or (role_raw if isinstance(role_raw, str) else None)
+                    ),
+                    stage=review_action_label(review.review_type, review.reason),
+                    detail=review.question,
                     review_id=review.id,
                     review_url=f"{public_app_base_url}/reviews/{review.id}",
                     original_email_url=self._safe_outlook_url(source.outlook_web_link),

@@ -14,6 +14,12 @@ from recruitment_agent.extraction.models import (
     RecruitmentExtraction,
 )
 
+COMBINED_DATETIME_REASON = "timezone_and_datetime"
+COMBINED_DEADLINE_REASON = "timezone_and_deadline"
+COMBINED_TIME_REASONS = frozenset(
+    {COMBINED_DATETIME_REASON, COMBINED_DEADLINE_REASON}
+)
+
 _REVIEW_DATETIME_FORMATS = (
     "%Y-%m-%d %H:%M",
     "%Y-%m-%dT%H:%M",
@@ -153,6 +159,7 @@ class ReviewDecision(BaseModel):
 
     choice: str
     override_value: str | None = None
+    clock_override: str | None = None
     expected_version: int = Field(default=1, ge=1)
 
     @field_validator("choice")
@@ -188,6 +195,26 @@ def validate_review_decision(
     decision = ReviewDecision.model_validate(raw_decision)
     if decision.choice not in request.allowed_choices:
         raise ValueError("review choice is not allowed")
+    if request.reason in COMBINED_TIME_REASONS:
+        if decision.choice == "ignore":
+            if decision.override_value is not None or decision.clock_override is not None:
+                raise ValueError("ignore cannot include overrides")
+            return decision
+        if decision.clock_override is None:
+            raise ValueError("start or deadline clock is required")
+        parse_review_datetime(decision.clock_override)
+        if decision.choice == "other":
+            if decision.override_value is None:
+                raise ValueError("other review choice requires an override value")
+            try:
+                ZoneInfo(decision.override_value)
+            except ZoneInfoNotFoundError as exc:
+                raise ValueError("timezone override must be a valid IANA timezone") from exc
+        elif decision.override_value is not None:
+            raise ValueError("override value is only allowed for the other choice")
+        return decision
+    if decision.clock_override is not None:
+        raise ValueError("clock override is only allowed for combined time review")
     if request.review_type is ReviewType.DATETIME_CONFLICT and decision.choice == "use_override":
         if decision.override_value is None:
             raise ValueError("datetime override is required")

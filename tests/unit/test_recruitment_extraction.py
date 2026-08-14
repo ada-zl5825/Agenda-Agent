@@ -32,6 +32,10 @@ from recruitment_agent.extraction.models import (
     RecruitmentExtraction,
     RecruitmentExtractionRequest,
 )
+from recruitment_agent.extraction.prompt import (
+    RECRUITMENT_EXTRACTION_PROMPT_VERSION,
+    SYSTEM_PROMPT_V2,
+)
 from recruitment_agent.extraction.validator import ExtractionValidator
 from recruitment_agent.links.models import (
     ActionLinkType,
@@ -190,6 +194,14 @@ async def test_langchain_adapter_replaces_provider_failure_with_safe_error() -> 
         await adapter.extract(request)
 
     assert "private email body" not in str(raised.value)
+
+
+def test_prompt_extracts_wall_clock_without_inventing_timezone() -> None:
+    assert RECRUITMENT_EXTRACTION_PROMPT_VERSION == "recruitment-extraction-v2"
+    assert "always fill the matching normalized datetime" in SYSTEM_PROMPT_V2
+    assert "Never infer timezone from company identity" in SYSTEM_PROMPT_V2
+    assert "non-authoritative placeholder" in SYSTEM_PROMPT_V2
+    assert "keep the normalized datetime/deadline null" not in SYSTEM_PROMPT_V2
 
 
 def test_validator_rejects_model_hallucinated_link_reference() -> None:
