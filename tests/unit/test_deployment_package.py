@@ -136,6 +136,16 @@ def test_phase_nine_a_deploys_app_and_infrastructure_on_separate_paths() -> None
     assert "Hold application deployment until the migration succeeds" in infra_workflow
 
 
+def test_queue_trigger_binds_a_literal_queue_name_for_flex_scaling() -> None:
+    """Flex Consumption scale control cannot resolve %app-setting% queue names."""
+    function_entrypoints = Path("function_app.py").read_text(encoding="utf-8")
+    infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
+
+    assert 'queue_name="recruitment-operations"' in function_entrypoints
+    assert "%OPS_QUEUE_NAME%" not in function_entrypoints
+    assert "var operationsQueueName = 'recruitment-operations'" in infrastructure
+
+
 def test_console_admin_identity_can_be_bootstrapped_without_a_new_secret() -> None:
     infrastructure = Path("infra/main.bicep").read_text(encoding="utf-8")
     workflow = Path(".github/workflows/deploy-infra.yml").read_text(encoding="utf-8")
