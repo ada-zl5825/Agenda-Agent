@@ -66,3 +66,55 @@ async def test_queue_uses_the_storage_managed_identity_client_id(
         pass
 
     assert selected_client_id == "storage-client-id"
+
+
+@pytest.mark.asyncio
+async def test_queue_messages_are_base64_encoded_for_the_functions_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Functions host default MessageEncoding=Base64 must match the sender."""
+    captured_policies: list[object] = []
+
+    class Credential:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            captured_policies.append(kwargs.get("message_encode_policy"))
+
+        @classmethod
+        def from_connection_string(cls, *_args: object, **kwargs: object) -> "Client":
+            return cls(**kwargs)
+
+        async def __aenter__(self) -> "Client":
+            return self
+
+        async def __aexit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc: BaseException | None,
+            _traceback: object,
+        ) -> None:
+            pass
+
+    monkeypatch.setattr(queue_module, "DefaultAzureCredential", Credential)
+    monkeypatch.setattr(queue_module, "QueueClient", Client)
+
+    monkeypatch.setenv("AzureWebJobsStorage", "UseDevelopmentStorage=true")
+    async with azure_operation_queue(_settings()):
+        pass
+
+    monkeypatch.delenv("AzureWebJobsStorage", raising=False)
+    monkeypatch.setenv("AzureWebJobsStorage__accountName", "exampleaccount")
+    async with azure_operation_queue(_settings()):
+        pass
+
+    assert len(captured_policies) == 2
+    assert all(
+        isinstance(policy, queue_module.TextBase64EncodePolicy)
+        for policy in captured_policies
+    )

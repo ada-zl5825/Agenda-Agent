@@ -246,9 +246,11 @@ class MicrosoftAuthorizationService:
         if not accounts:
             raise AuthenticationRequiredError("Microsoft account authorization is required")
         account = self._select_account(accounts, snapshot.home_account_id)
+        # MSAL asserts `isinstance(scopes, list)` here; passing the tuple raises
+        # AssertionError("Invalid parameter type") and breaks every silent refresh.
         result = await asyncio.to_thread(
             client.acquire_token_silent_with_error,
-            GRAPH_DELEGATED_SCOPES,
+            list(GRAPH_DELEGATED_SCOPES),
             account,
             force_refresh=force_refresh,
         )
