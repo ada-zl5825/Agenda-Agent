@@ -8,7 +8,10 @@ The automated suite covers:
 - MSAL encrypted cache behavior and Graph delta/retry contracts;
 - idempotent mail synchronization;
 - HTML/plain-text normalization;
-- Chinese 126 forwarding and English nested-forward precedence;
+- Chinese 126 forwarding, English nested-forward precedence, and Outlook `#divRplyFwdMsg`
+  wraps that split `From:` from the address line;
+- consumer mailbox domains (`126.com` and siblings) never winning employer domain match,
+  and recruiter replies that quote a 126 address keeping the Graph author;
 - hidden content, tracking pixels, scripts, footers, and quoted-history removal;
 - pre-sanitization URL discovery without secret-bearing representations;
 - email, phone, candidate, government, passport, and student-ID redaction;
@@ -44,11 +47,14 @@ The automated suite covers:
 - privacy-safe provider failures and representations; and
 - managed-identity Azure OpenAI deployment settings with no API key;
 - every Phase 5 route: happy path, unlikely prefilter, model irrelevance, invalid extraction,
-  timezone ambiguity, Application ambiguity and datetime conflict;
+  timezone ambiguity, Application ambiguity, datetime override after timezone selection,
+  and workflow-failure redirect with `error=EVENT_DATETIME_UNRESOLVED`;
 - invalid Review choice loops, typed resume, stable Review identity and optimistic idempotency;
 - graph reconstruction with the same checkpointer and processing-run/thread identity;
 - exact application resolution, explicit application ambiguity, and reviewed create-new behavior;
-- semantic event/action duplicate detection across repeated processing;
+- semantic event/action duplicate detection across repeated processing, including dated
+  fingerprints only (two undated interviews do not collapse);
+- same-round interview time changes updating the existing event (`interview_time_changed`);
 - deterministic status transitions and terminal-state downgrade prevention;
 - single-target reschedule updates, ambiguous reschedule interrupts, and old-value history;
 - unresolved required datetime/timezone evidence produces a zero-mutation plan;

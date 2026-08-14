@@ -23,6 +23,7 @@ class ForwardedEnvelope(BaseModel):
     subject: str | None = Field(default=None, repr=False)
     body_text: str = Field(repr=False)
     depth: int = Field(ge=1)
+    has_explicit_marker: bool = False
 
 
 class NormalizedEmail(BaseModel):

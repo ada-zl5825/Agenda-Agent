@@ -8,6 +8,7 @@ from recruitment_agent.domain.company import (
     CompanyResolutionMatch,
     CompanyResolutionMethod,
     CompanyResolutionStatus,
+    is_consumer_mailbox_domain,
     normalize_company_domain,
     normalize_company_name,
 )
@@ -44,7 +45,7 @@ class CompanyResolver:
                     name_method = CompanyResolutionMethod.ALIAS_EXACT
 
         domain_matches: tuple[CompanyResolutionMatch, ...] = ()
-        if sender_domain is not None:
+        if sender_domain is not None and not is_consumer_mailbox_domain(sender_domain):
             try:
                 normalized_domain = normalize_company_domain(sender_domain)
             except DomainValidationError:

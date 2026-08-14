@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from recruitment_agent.api.dependencies import get_review_service, get_web_session_manager
-from recruitment_agent.application.errors import ReviewAuthenticationError
+from recruitment_agent.application.errors import ApplicationError, ReviewAuthenticationError
 from recruitment_agent.application.reviews import ReviewService
 from recruitment_agent.reviews.renderer import ReviewHtmlRenderer
 from recruitment_agent.web.security import WebSessionManager
@@ -60,7 +60,13 @@ async def review_detail(
         review_id=review_id,
         version=detail.version,
     )
-    return HTMLResponse(_renderer.detail(detail, csrf_token=csrf))
+    return HTMLResponse(
+        _renderer.detail(
+            detail,
+            csrf_token=csrf,
+            error=request.query_params.get("error"),
+        )
+    )
 
 
 @router.post("/{review_id}/resolve", response_class=RedirectResponse)
@@ -97,13 +103,19 @@ async def resolve_review(
         version=version,
         supplied=csrf,
     )
-    await service.resolve(
-        account_id=session.connection_id,
-        review_id=review_id,
-        choice=choice,
-        override_value=override,
-        expected_version=version,
-    )
+    try:
+        await service.resolve(
+            account_id=session.connection_id,
+            review_id=review_id,
+            choice=choice,
+            override_value=override,
+            expected_version=version,
+        )
+    except ApplicationError as exc:
+        return RedirectResponse(
+            url=f"/reviews/{review_id}?error={quote(exc.code, safe='')}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     return RedirectResponse(
         url=f"/reviews/{review_id}",
         status_code=status.HTTP_303_SEE_OTHER,

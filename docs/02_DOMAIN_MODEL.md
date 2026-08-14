@@ -27,7 +27,8 @@ remain unresolved until a deterministic resolver or later review assigns `compan
 
 1. normalized canonical-name exact match;
 2. normalized alias exact match;
-3. normalized sender-domain exact match.
+3. normalized sender-domain exact match, skipping consumer mailboxes such as `126.com`,
+   `163.com`, `qq.com`, `gmail.com`, and `outlook.com`.
 
 One consistent active company returns `RESOLVED`. No match returns `UNRESOLVED`. Multiple exact
 matches, including a company-name match that conflicts with the sender-domain match, return
@@ -90,10 +91,14 @@ duplicate. Unresolved companies require an explicit create-new review decision; 
 canonical company row.
 
 Semantic event fingerprints contain canonical company identity, normalized role, event type,
-round, normalized event time, and deadline. Replaying either the same email or equivalent evidence
-reuses the existing event and action-item keys. A reschedule searches active interview events,
-updates the one deterministic target in place, and records its previous time/status in
-`event_history`. Zero or multiple plausible targets interrupt with `UNCERTAIN_RESCHEDULE`.
+round, normalized event time, and deadline. Fingerprint reuse applies only when the compared times
+are actually resolved; two undated interviews do not collapse into one event. Replaying either the
+same email or equivalent dated evidence reuses the existing event and action-item keys. A
+reschedule searches active interview events, updates the one deterministic same-round target in
+place, and records its previous time/status in `event_history`. A new `interview` whose only
+same-round active interview has a different resolved time is treated as `interview_time_changed`
+and follows the same in-place update. Zero or multiple plausible targets interrupt with
+`UNCERTAIN_RESCHEDULE`.
 
 Application transitions are monotonic for ordinary progress, preserve withdrawn applications, and
 do not let assessment/interview evidence downgrade offer or rejection states. Every actual status

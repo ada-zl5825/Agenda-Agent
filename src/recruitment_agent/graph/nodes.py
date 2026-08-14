@@ -35,6 +35,7 @@ from recruitment_agent.graph.contracts import (
     WorkflowExtractionResult,
     WorkflowPrefilterDecision,
     WorkflowStage,
+    parse_review_datetime,
     validate_review_decision,
 )
 from recruitment_agent.graph.state import RecruitmentGraphState
@@ -216,6 +217,18 @@ def _datetime_review(reason: str) -> ReviewRequest:
     )
 
 
+def _unresolved_datetime_review(reason: str) -> ReviewRequest:
+    return ReviewRequest(
+        review_type=ReviewType.DATETIME_CONFLICT,
+        reason=reason,
+        question=(
+            "The email names a date or time that could not be parsed. "
+            "Enter the local date and time as YYYY-MM-DD HH:MM, or ignore."
+        ),
+        allowed_choices=("use_override", "ignore"),
+    )
+
+
 def _application_review(
     reason: str,
     result: WorkflowExtractionResult,
@@ -283,16 +296,24 @@ def _next_review_request(
         reason = "datetime_conflict"
         if reason not in reviewed_reasons:
             return _datetime_review(reason)
-    timezone_codes = {
+    if ExtractionIssueCode.TIMEZONE_AMBIGUOUS in issue_codes:
+        reason = "timezone_ambiguity"
+        if reason not in reviewed_reasons:
+            return _timezone_review(reason)
+    if ExtractionIssueCode.DATETIME_UNRESOLVED in issue_codes:
+        reason = "datetime_unresolved"
+        if reason not in reviewed_reasons:
+            return _unresolved_datetime_review(reason)
+    if ExtractionIssueCode.DEADLINE_UNRESOLVED in issue_codes:
+        reason = "deadline_unresolved"
+        if reason not in reviewed_reasons:
+            return _unresolved_datetime_review(reason)
+    recognized_codes = {
+        ExtractionIssueCode.TIMEZONE_CONFLICT,
         ExtractionIssueCode.TIMEZONE_AMBIGUOUS,
         ExtractionIssueCode.DATETIME_UNRESOLVED,
         ExtractionIssueCode.DEADLINE_UNRESOLVED,
     }
-    if issue_codes & timezone_codes:
-        reason = "timezone_ambiguity"
-        if reason not in reviewed_reasons:
-            return _timezone_review(reason)
-    recognized_codes = timezone_codes | {ExtractionIssueCode.TIMEZONE_CONFLICT}
     if (
         result.validation.status is ExtractionValidationStatus.NEEDS_REVIEW
         and issue_codes - recognized_codes
@@ -422,6 +443,13 @@ async def request_review(
         update["reviewed_timezone"] = (
             decision.override_value if decision.choice == "other" else decision.choice
         )
+    elif request.review_type is ReviewType.DATETIME_CONFLICT:
+        if decision.choice == "use_override" and decision.override_value is not None:
+            parsed = parse_review_datetime(decision.override_value).isoformat()
+            if request.reason == "deadline_unresolved":
+                update["reviewed_deadline"] = parsed
+            else:
+                update["reviewed_event_datetime"] = parsed
     elif request.review_type is ReviewType.APPLICATION_AMBIGUITY:
         if request.reason == "extraction_needs_review":
             pass
@@ -476,6 +504,12 @@ def _domain_evidence(state: RecruitmentGraphState) -> RecruitmentEvidence:
     timezone = state.get("reviewed_timezone")
     event_datetime = extraction.event_datetime
     deadline = extraction.deadline
+    reviewed_event_datetime = state.get("reviewed_event_datetime")
+    reviewed_deadline = state.get("reviewed_deadline")
+    if reviewed_event_datetime is not None:
+        event_datetime = datetime.fromisoformat(reviewed_event_datetime)
+    if reviewed_deadline is not None:
+        deadline = datetime.fromisoformat(reviewed_deadline)
     if timezone is not None:
         # A human resolved the ambiguous timezone. The extracted values carry
         # the email's wall-clock time with an unknown or invented offset, so

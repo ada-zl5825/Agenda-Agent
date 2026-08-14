@@ -6,6 +6,7 @@ import pytest
 
 from recruitment_agent.api.app import create_app
 from recruitment_agent.api.dependencies import get_review_service, get_web_session_manager
+from recruitment_agent.application.errors import TimeEvidenceUnresolvedError
 from recruitment_agent.reviews.models import ReviewDetail, ReviewQueueItem
 from recruitment_agent.web.security import WebSessionManager
 
@@ -61,6 +62,7 @@ class Reviews:
     def __init__(self, value: ReviewDetail) -> None:
         self.value = value
         self.resolutions: list[dict[str, object]] = []
+        self.fail_with: Exception | None = None
 
     async def list_open(self, *, account_id: UUID) -> tuple[ReviewQueueItem, ...]:
         assert account_id == self.value.account_id
@@ -81,7 +83,49 @@ class Reviews:
 
     async def resolve(self, **kwargs: object) -> ReviewDetail:
         self.resolutions.append(kwargs)
+        if self.fail_with is not None:
+            raise self.fail_with
         return self.value
+
+
+@pytest.mark.asyncio
+async def test_workflow_failure_after_resolve_redirects_with_error_code() -> None:
+    account_id = uuid4()
+    review_id = uuid4()
+    manager = WebSessionManager(key=b"s" * 32, clock=Clock())
+    reviews = Reviews(detail(account_id, review_id))
+    reviews.fail_with = TimeEvidenceUnresolvedError("event_datetime_unresolved")
+    application = create_app()
+    application.dependency_overrides[get_web_session_manager] = lambda: manager
+    application.dependency_overrides[get_review_service] = lambda: reviews
+    transport = httpx.ASGITransport(app=application)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://agent.example",
+        follow_redirects=False,
+    ) as client:
+        session = manager.issue(
+            account_id,
+            admin_home_account_id="admin-account",
+            admin_tenant_id=None,
+        )
+        client.cookies.set(manager.cookie_name, session)
+        csrf = manager.csrf_token(
+            session_token=session,
+            review_id=review_id,
+            version=1,
+        )
+        response = await client.post(
+            f"/reviews/{review_id}/resolve",
+            content=(
+                "choice=Europe%2FLondon&expected_version=1&csrf_token=" + csrf
+            ),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    assert response.status_code == 303
+    assert "error=EVENT_DATETIME_UNRESOLVED" in response.headers["location"]
 
 
 @pytest.mark.asyncio

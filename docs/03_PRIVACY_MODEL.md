@@ -13,7 +13,9 @@ transient Graph body
   -> persist ciphertext and approved metadata atomically
   -> normalize HTML/plain text
   -> parse deepest 126/nested forwarded sender context
-  -> remove hidden, tracking, footer, and quoted history content
+  -> remove hidden, tracking, footer, and quoted reply history
+     (keep Outlook `#divRplyFwdMsg` envelopes that still contain From/发件人
+     plus Sent/Subject; those are the original recruiter, not quoted history)
   -> redact every URL and unnecessary PII
   -> produce sanitized model text
   -> run the deterministic recruitment prefilter
@@ -36,6 +38,9 @@ opaque reference such as `[ACTION_LINK_01: assessment link, domain=example.com]`
 - labeled student identifiers;
 - scripts, styles, hidden HTML, images/tracking pixels;
 - common confidentiality/unsubscribe footers and quoted reply history.
+  Outlook `#divRplyFwdMsg` blocks that still carry From/发件人 plus Sent/Subject
+  are forward envelopes and stay in the normalized text so the original recruiter
+  can be recovered. Consumer mailbox domains never become employer identity.
 
 ## Storage and logging boundary
 

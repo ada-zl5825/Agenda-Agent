@@ -1,6 +1,7 @@
 """Phase 6 application service for deterministic recruitment state changes."""
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -210,22 +211,67 @@ class RecruitmentDomainService:
                 reason="reschedule_target_uncertain",
             )
 
-        duplicate = await self._store.find_event_by_fingerprint(
-            application_id=application.application_id,
-            semantic_fingerprint=fingerprint,
-        )
-        if duplicate is not None:
-            return EventResolution(
-                kind=EventResolutionKind.DUPLICATE,
-                event_id=duplicate.id,
+        dated = evidence.event_datetime is not None or evidence.deadline is not None
+        if dated:
+            duplicate = await self._store.find_event_by_fingerprint(
+                application_id=application.application_id,
                 semantic_fingerprint=fingerprint,
-                reason="semantic_duplicate",
             )
+            if duplicate is not None:
+                return EventResolution(
+                    kind=EventResolutionKind.DUPLICATE,
+                    event_id=duplicate.id,
+                    semantic_fingerprint=fingerprint,
+                    reason="semantic_duplicate",
+                )
+
+        if tracked_type is RecruitmentEventType.INTERVIEW and not treat_as_new:
+            changed = await self._same_round_time_change(
+                application.application_id,
+                evidence,
+            )
+            if changed is not None:
+                return changed
+
         return EventResolution(
             kind=EventResolutionKind.CREATE,
             event_id=new_event_id(evidence.source_email_id, fingerprint),
             semantic_fingerprint=fingerprint,
             reason="new_event",
+        )
+
+    async def _same_round_time_change(
+        self,
+        application_id: UUID,
+        evidence: RecruitmentEvidence,
+    ) -> EventResolution | None:
+        """Update the only same-round interview when a later email changes its time.
+
+        Recruiters often send a new invitation instead of an explicit reschedule.
+        Creating a second event would duplicate the Outlook calendar item. Two
+        undated interviews must not collapse: their fingerprints are identical
+        once datetime and deadline are both null.
+        """
+        if evidence.event_datetime is None:
+            return None
+        candidates = tuple(
+            event
+            for event in await self._store.list_active_interviews(application_id)
+            if _same_round(event.round, evidence.interview_round)
+        )
+        if len(candidates) != 1:
+            return None
+        existing = candidates[0]
+        if existing.starts_at is not None and _same_instant(
+            existing.starts_at,
+            evidence.event_datetime,
+        ):
+            return None
+        return EventResolution(
+            kind=EventResolutionKind.RESCHEDULE,
+            event_id=existing.id,
+            semantic_fingerprint=semantic_fingerprint(evidence),
+            reason="interview_time_changed",
         )
 
     def plan_transition(
@@ -299,6 +345,10 @@ def _same_round(existing: str | None, proposed: str | None) -> bool:
     if existing is None or proposed is None:
         return existing is proposed
     return " ".join(existing.casefold().split()) == " ".join(proposed.casefold().split())
+
+
+def _same_instant(left: datetime, right: datetime) -> bool:
+    return left.astimezone(UTC) == right.astimezone(UTC)
 
 
 def _planned_event(
