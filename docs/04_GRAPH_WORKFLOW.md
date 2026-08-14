@@ -74,8 +74,19 @@ resume after deployment.
 
 The production composition functions `run_mail_processing_job` and
 `resume_mail_processing_job` reconstruct all adapters and the graph around the same PostgreSQL
-checkpointer. Phase 6 composition also supplies the atomic PostgreSQL domain store. Selecting
-pending mail and exposing the graphical Review command are later phases.
+checkpointer. Phase 6 composition also supplies the atomic PostgreSQL domain store. Phase 8 exposes
+the authenticated graphical Review page. Phase 9A `process-pending` selects pending source emails
+and fans them out as child operations.
+
+## Successor reviews and orphan recovery
+
+Review identity is derived from `processing_run_id`, review type, and reason. After a row is
+`resolved`, a later interrupt of the same type and reason opens a successor review instead of
+reusing the resolved ID. If a run remains `needs_review` with no open review row, the queue shows
+the email as `处理中断`. `process-pending` reclaims that email to `pending` and starts a new
+processing run. Domain writes stay idempotent: the second run reuses the source-email application
+link, semantic event fingerprints, and action keys. The console open-review count uses review
+status `open`.
 
 ## Daily Brief review navigation contract
 

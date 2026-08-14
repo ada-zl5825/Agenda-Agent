@@ -1,102 +1,91 @@
 # Recruitment Inbox Agent
 
-面向个人求职流程的隐私优先邮件 Agent。当前仓库已完成技术设计中的 Phase 0、
-Phase 1、Phase 2、Phase 3、Phase 3.5、Phase 4、Phase 4.5、Phase 5、Phase 6、
-Phase 7、Phase 8 与 Phase 9A。
+隐私优先的个人求职邮箱 Agent。把自动转发到 Outlook 的校招邮件，变成可审核的申请状态、日历事件和每日 Daily Brief。
 
-## Phase 1 已实现
+大模型只做语义抽取。数据库、日历和发信全部由确定性工作流完成。无法安全判断的事项进入人工 Review，不会让模型直接改库、改日历或发邮件。
 
-- Microsoft OAuth 2.0 Authorization Code Flow（MSAL）
-- 当前 delegated scopes 为 `User.Read`、`Mail.Read`、`Calendars.ReadWrite` 与 `Mail.Send`；
-  始终不申请 `Mail.ReadWrite`
-- AES-256-GCM 加密的持久化 MSAL token cache，带乐观并发版本
-- 单次、限时、加密保存的 OAuth flow state
-- 基于 `httpx` 和 Pydantic DTO 的 Microsoft Graph 客户端
-- Inbox message delta、`nextLink` 分页与 `deltaLink` 持久化
-- 401 后强制刷新一次 token
-- 429 `Retry-After` 与 5xx/网络错误的有界重试
-- PostgreSQL 邮件元数据幂等 upsert
-- Azure Functions ASGI 入口和每 10 分钟一次的 Timer Trigger
+```text
+126 / 其他校招邮箱
+        │ 自动转发
+        ▼
+   Dedicated Outlook
+        │ Microsoft Graph
+        ▼
+Recruitment Inbox Agent
+        │
+        ├── PostgreSQL（申请 / 事件 / Review / 审计）
+        ├── Outlook Calendar（面试 / 测评截止）
+        └── Daily Brief（每天本地 08:00）
+```
 
-## Phase 2 已实现
+## 做什么
 
-- 使用 BeautifulSoup + lxml 将 HTML 确定性归一化为文本
-- 删除 script、style、隐藏节点、图片/tracking pixel、无关 footer 与 quoted history
-- 解析 126 自动转发和嵌套转发邮件，优先使用最内层原始招聘人、主题和正文
-- 在 HTML 清理前发现 HTTP(S) 链接；原始链接仅存在于短生命周期敏感对象中
-- 删除个人邮箱、电话号码、candidate ID、身份证/护照和学号模式
-- 产生唯一允许跨越未来模型边界的 sanitized text
-- 基于中英文主题、正文和发件域名的高召回招聘邮件 prefilter
+- 同步 Outlook 收件箱，识别招聘相关邮件（含 126 嵌套转发）
+- 在进入模型前清洗 HTML、去掉追踪像素，并加密测评 / 面试等动作链接
+- 用结构化输出抽取公司、岗位、面试、截止日期、Offer / 拒信
+- 确定性匹配已审核公司目录；对不上或有歧义时进入 Review
+- 维护 Application 状态、招聘事件和待办，避免重试写出重复记录
+- 在 Outlook 日历写入面试 / 测评截止（可关闭）
+- 每天发送 Daily Brief；控制台提供 Review 队列和运行开关
 
-## Phase 3 已实现
+## 不做什么
 
-- 在 HTML 清理前提取并稳定编号动作链接
-- 确定性分类 assessment、interview、meeting、confirmation、scheduling、
-  application portal、offer 与 general 链接
-- 模型可见文本仅包含链接类型、域名和 `ACTION_LINK_*` 不透明引用
-- 使用带上下文绑定的 AES-256-GCM 加密原始 URL
-- 通过异步 Azure Key Vault 客户端、托管身份和版本化密钥支持轮换
-- PostgreSQL `secure_links` 表仅保存密文、nonce、密钥版本和经批准的安全元数据
-- 相同邮件重复处理保持引用和数据库记录身份稳定
+- 不申请 `Mail.ReadWrite`，不改原邮件
+- 不下载附件，不把原始正文或明文密钥 URL 交给模型
+- 不从公司名、发件域名或地点静默推断时区
+- 不自动回复招聘方
+- 不支持 Gmail、IMAP 或浏览器自动化（除非另行实现）
 
-Phase 3 不包含 LLM、LangGraph、附件下载、日历或自动发信。数据库仍不保存原始邮件
-正文、HTML、附件、明文 OAuth token 或明文动作 URL。
+完整约束见 [AGENTS.md](AGENTS.md)。
 
-## Phase 3.5 已实现
+## 当前范围
 
-- `Company`、`CompanyAlias` 与 `CompanyDomain` 规范实体和父子公司关系
-- 公司名 Unicode/case/punctuation/whitespace 确定性规范化
-- 按规范名称、别名、发件域名依次进行严格 exact match
-- 未知公司保持 `UNRESOLVED`，冲突记录返回 `AMBIGUOUS`；不做模糊、向量或 LLM 匹配
-- `Application` 用 `company_id` 表示规范身份，并原样保留 `raw_company_name`
-- Phase 4 预留 `company_raw`、`role_raw` 原始抽取合同，不包含模型集成
-- 可重复执行的 35 家常见招聘公司 seed 目录和 PostgreSQL 仓储
+技术设计中的 Phase 0–9A 已落地。Alembic head 为 `20260814_0011`。
 
-Seed 未覆盖且无法通过已审核域名命中的公司会保持 `UNRESOLVED`：系统保留原始公司名、
-令 `company_id` 为空，也不会自动创建公司。目录后续补录后，需要显式重新运行 resolver；
-不会静默回填历史记录。
+| 界面 | 路径 | 说明 |
+| --- | --- | --- |
+| 控制台 | `/agent` | 运行开关、同步、处理待办、Brief 收件人 |
+| Review | `/reviews` | 时区、公司、改期、日历等人工确认 |
+| Brief 预览 | `/brief/today` | 控制台样式预览；发出的邮件保持 mail-safe |
+| 登录 | `/auth/login` | 管理员登录，不替换邮箱 Token Cache |
+| 连接邮箱 | `/auth/mailbox/connect` | 显式连接 / 更换 Outlook |
 
-## Phase 4 已实现
+## 架构
 
-- 使用 LangChain `ChatOpenAI` / `AzureChatOpenAI` 与 Pydantic strict structured output 提取招聘语义证据
-- 模型只接收脱敏正文、邮件接收时间和允许的 `ACTION_LINK_*` 引用
-- 输出保留 `company_raw`、`role_raw`，不生成 `company_id`，与 Phase 3.5 公司解析分离
-- 确定性校验处理链接幻觉、字段冲突、低置信度以及时间和时区歧义
-- 未明确时区的时间不做推断，保留来源文本并进入 `NEEDS_REVIEW`
-- 版本化 prompt 与九类 provider-independent 合同样例
-- Azure OpenAI 使用 Function managed identity，无 API key；调用带超时和有界重试
+领域逻辑与 Microsoft Graph、LangChain、LangGraph、Azure OpenAI、Azure Functions、PostgreSQL 实现解耦。LangGraph 只编排执行；PostgreSQL 才是业务真相。
 
-Phase 4 是无状态语义提取层，不写数据库、不解析 canonical company、不创建日历或发送
-邮件。Phase 4 本身不新增 Alembic 迁移。
+```mermaid
+flowchart LR
+  graphMail[Microsoft Graph 邮件] --> sync[邮件同步]
+  sync --> prep[链接加密与脱敏]
+  prep --> llm[结构化抽取]
+  llm --> validate[确定性校验]
+  validate --> review{需要 Review?}
+  review -->|是| human[人工确认]
+  human --> domain
+  review -->|否| domain[申请 / 事件落库]
+  domain --> cal[Outlook 日历]
+  domain --> brief[Daily Brief]
+```
 
-## Phase 4.5 已实现
+## 文档
 
-- 将 Phase 4 的 `company_raw`、`role_raw` 直接接入确定性实体解析，不再调用 LLM 判断公司
-- 公司规范名、别名与发件域名均使用 exact match，并保留匹配值与置信度
-- 名称证据与域名证据指向不同公司时返回 `AMBIGUOUS`，未知公司返回 `UNRESOLVED`
-- 轻量 `RoleNormalizer` 保留原始职位名，并生成规范名与辅助 `role_family`
-- 以稳定 ID 幂等保存解析尝试；冲突候选单独持久化，支持后续 Review 审计
-- `INVALID` 提取结果不会进入解析；`NEEDS_REVIEW` 只记录确定性证据，不授权业务变更
+| 文档 | 内容 |
+| --- | --- |
+| [docs/README.md](docs/README.md) | 文档索引 |
+| [最终技术设计](docs/01_FINAL_TECHNICAL_DESIGN.md) | 架构与 phase 边界 |
+| [领域模型](docs/02_DOMAIN_MODEL.md) | Application、公司、事件、幂等 |
+| [隐私模型](docs/03_PRIVACY_MODEL.md) | 脱敏、加密、日志边界 |
+| [工作流](docs/04_GRAPH_WORKFLOW.md) | LangGraph、Review、恢复 |
+| [运维](docs/05_OPERATIONS.md) | 配置、迁移、Azure 部署 |
+| [测试](docs/06_TEST_PLAN.md) | 自动化覆盖范围 |
+| [开源清单](docs/07_OPEN_SOURCE.md) | 公开仓库前要处理的事项 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 本地开发与 PR |
+| [SECURITY.md](SECURITY.md) | 漏洞报告与安全边界 |
 
-Phase 4.5 不匹配 Application、不引入 LangGraph、不创建日历、不发信，也不使用模糊匹配、
-向量搜索、外部搜索或 LLM 公司规范化。
+## 本地运行
 
-## Phase 5 已实现
-
-- 显式 `StateGraph` 节点与确定性路由覆盖邮件准备、提取、校验、Review 和最终处理
-- PostgreSQL `agent_checkpoint` schema 保存 durable checkpoint，稳定 run ID 同时作为 thread ID
-- `processing_runs`、`llm_extractions` 与 `review_items` 保存幂等执行和人工审核审计
-- 时区歧义、Application 歧义和日期时间冲突通过 `interrupt()` 暂停，并用 typed decision 恢复
-- checkpoint 只包含脱敏文本、opaque link ref、结构化证据和数据库 ID
-- 生产组合入口连接 Graph、Key Vault、Azure 模型与 PostgreSQL，并正确释放异步资源
-- Phase 5 的原始边界用 typed no-op 隔离当时尚未实现的领域与 Calendar 副作用
-
-Phase 5 不实现 Review 图形页面、Daily Brief、Application/Event 状态机或 Calendar 写入。
-数据库 head 为 `20260813_0006`。
-
-## 本地启动
-
-要求 Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 PostgreSQL。
+需要 Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 PostgreSQL。
 
 ```powershell
 Copy-Item .env.example .env
@@ -106,63 +95,19 @@ uv run seed-companies
 uv run uvicorn recruitment_agent.api.app:app --reload
 ```
 
-配置 `.env` 并执行迁移后，浏览器打开 `http://127.0.0.1:8000/auth/login` 完成管理员登录，
-再从控制台点击“连接 / 更换 Outlook”建立 Agent 的 Graph 授权。管理员登录不会覆盖邮箱
-Token Cache；只有显式 Outlook 连接流程会更新它。
-回调地址必须与 Entra App Registration 中登记的 Web redirect URI 完全一致。
+补全 `.env` 后打开 `http://127.0.0.1:8000/auth/login` 完成管理员登录，再在控制台点击「连接 / 更换 Outlook」。管理员登录不会覆盖邮箱 Token Cache。
 
-生成 32 字节 token-cache 加密密钥的示例：
+回调地址必须与 Entra App Registration 中的 Web redirect URI 完全一致。
+
+生成 32 字节密钥（Token Cache、Web Session、Ops Token 各用一把，不要复用）：
 
 ```powershell
 python -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"
 ```
 
-该值属于生产密钥，不应提交到 Git；云端应通过 Function App 设置或 Key Vault 引用注入。
+这些值是密钥，不要提交到 Git。云端用 Function App 设置或 Key Vault 引用注入。完整变量见 [.env.example](.env.example) 和 [docs/05_OPERATIONS.md](docs/05_OPERATIONS.md)。
 
-## Azure 配置
-
-Azure Functions 部署会读取根目录的 `requirements.txt`。生成该文件时必须使用非 editable
-项目安装，确保远程构建把 `recruitment_agent` 安装到运行时的 `site-packages`：
-
-```powershell
-uv --cache-dir .uv-cache export --format requirements-txt --no-dev --no-hashes --no-editable --frozen --output-file requirements.txt
-```
-
-需要设置：
-
-- `DATABASE_URL`
-- `MICROSOFT_CLIENT_ID`
-- `MICROSOFT_CLIENT_SECRET`
-- `MICROSOFT_TENANT=consumers`
-- `MICROSOFT_REDIRECT_URI`
-- `MICROSOFT_CONNECTION_ID`
-- `ADMIN_MICROSOFT_HOME_ACCOUNT_ID`（可选恢复/首次部署 allowlist；现有部署由迁移从当前授权播种）
-- `TOKEN_CACHE_ENCRYPTION_KEY`
-- `TOKEN_CACHE_ENCRYPTION_KEY_VERSION=v1`
-- `AZURE_KEY_VAULT_URL`
-- `LINK_ENCRYPTION_KEY_SECRET_NAME=recruitment-link-encryption-key`
-- `KEY_VAULT_REQUEST_TIMEOUT_SECONDS=10`
-- `LLM_ENABLED=true`
-- `AZURE_OPENAI_ENDPOINT`
-- `AZURE_OPENAI_DEPLOYMENT`
-- `AZURE_OPENAI_API_VERSION=2024-10-21`（Foundry `/openai/v1` endpoint 会忽略此值）
-- `AZURE_OPENAI_REQUEST_TIMEOUT_SECONDS=30`
-- `AZURE_OPENAI_MAX_RETRY_ATTEMPTS=3`
-- `MAIL_SYNC_SCHEDULE=0 */10 * * * *`
-- `DAILY_BRIEF_ENABLED=false`（完成迁移和重新授权后再设为 `true`）
-- `DAILY_BRIEF_RECIPIENT`（可选首次初始化值；之后由控制台数据库设置接管）
-- `DAILY_BRIEF_SCHEDULE=0 0 * * * *`（UTC 每小时唤醒）
-- `DAILY_BRIEF_LOCAL_HOUR=8`（按 `USER_TIMEZONE` 过滤，自动适配 DST）
-- `PUBLIC_APP_BASE_URL`
-- `WEB_SESSION_SIGNING_KEY`（独立 Base64 32 字节密钥，不得复用 token-cache key）
-- `WEB_SESSION_TTL_SECONDS=28800`
-- `AzureWebJobsStorage__accountName`
-- `AzureWebJobsStorage__credential=managedidentity`
-
-部署前执行 `uv run alembic upgrade head`。Azure Functions 实例保持无状态；OAuth cache、
-授权 flow、delta cursor 与动作链接均以密文或元数据形式保存在 PostgreSQL。
-
-## 验证
+## 测试
 
 ```powershell
 uv run ruff check .
@@ -170,78 +115,38 @@ uv run mypy src
 uv run pytest
 ```
 
-Graph HTTP 契约使用 `respx` 测试；邮件夹具覆盖中文、英文和 126 嵌套转发场景；
-privacy regression 验证 URL token、PII、隐藏内容和原始正文不会越过安全边界。
-Docker 可用时可额外执行 PostgreSQL 集成测试：
+Docker 可用时再跑 PostgreSQL 集成测试：
 
 ```powershell
 $env:RUN_POSTGRES_INTEGRATION="1"
 uv run pytest -m integration
 ```
 
-## Phase 6 implemented
+## 生产部署
 
-- Deterministic application resolution uses canonical company IDs, normalized roles, source-email
-  links, and explicit Review decisions for ambiguous candidates.
-- Semantic fingerprints and action idempotency keys prevent duplicate applications, events, and
-  action items across retries.
-- Assessment, interview, offer, and rejection evidence drives validated Application transitions
-  with append-only status history.
-- Interview reschedules update the resolved active event in place and preserve the previous values
-  in event history; uncertain targets interrupt for Review.
-- Domain writes are revalidated and applied atomically in PostgreSQL. Required unresolved time
-  evidence yields a zero-mutation plan.
-- Secure destinations remain encrypted; Phase 6 stores only the matching `secure_link_id` and keeps
-  opaque refs in graph checkpoints.
-- Alembic head for Phase 6 is `20260813_0007`; Phase 7 extends it with `20260813_0008`.
+生产跑在 Azure Functions Flex Consumption + PostgreSQL Flexible Server + Key Vault。`main` 上 `quality` 通过后自动部署应用；Alembic / Bicep 变更走基础设施工作流，迁移由 VNet 内的 Container Apps Job 执行。
 
-## Phase 7 implemented
+```powershell
+./scripts/bootstrap-azure.ps1 `
+  -ResourceGroupName "<resource-group>" `
+  -GitHubRepository "<owner>/<repo>"
+```
 
-- Provider-neutral Calendar planning accepts only resolved applications and active, timezone-aware
-  interview or assessment/deadline events.
-- Microsoft Graph creates private attendee-free events and updates the same immutable event on
-  reschedule. Stable `transactionId` values and `calendar_links` prevent retry duplicates.
-- Calendar descriptions contain only approved metadata, label durations as placeholders, and never
-  contain decrypted action links or secret query strings.
-- Missing or unsafe linked events enter `UNSAFE_CALENDAR_UPDATE` human Review instead of being
-  recreated silently.
-- Apply Alembic head `20260813_0008`, grant delegated `Calendars.ReadWrite`, reauthorize the account,
-  then set `CALENDAR_SYNC_ENABLED=true`. It remains false by default.
-- Phase 8 在此基础上提供 Daily Brief、`Mail.Send` 和图形化 Review；Calendar 边界保持不变。
+重新执行 bootstrap 会轮换 Microsoft client secret 和应用加密密钥，只在有意轮换时运行。步骤与开关见 [docs/05_OPERATIONS.md](docs/05_OPERATIONS.md)。
 
-## Phase 8 implemented
+## 安全与隐私
 
-- 确定性 Daily Brief 查询和渲染覆盖 `TODAY`、`NEXT 48 HOURS`、Assessment、Interview、
-  Action Required、New Updates、Waiting for Result 与 Needs Review；整个过程不调用 LLM。
-- 每个 Needs Review 项只使用绝对路径 `/reviews/{review_id}` 深链，主操作固定为
-  `Open Review`；URL 不携带决策、候选项或敏感查询参数。
-- 图形化 Review 队列和详情页由短期 HMAC 会话保护；详情展示来源元数据、Application、
-  提取与时间证据、校验发现、现值/拟议值、候选匹配、安全链接元数据、副作用预览、
-  决策表单和审计结果。
-- Review GET 无副作用；POST 使用与 session、review ID、version 绑定的 CSRF，并在服务端
-  校验允许选项、typed override 和乐观并发后才恢复 LangGraph。
-- 普通 ActionItem 链接只在最终 Brief 渲染边界解密；Review 页面从不解密。含明文链接的
-  HTML 不持久化，数据库 `daily_briefs` 只保存每日发送状态和安全错误码。
-- Graph `POST /me/sendMail` 只发送生成的 Brief，无附件、原始邮件正文或 HTML；同一天只
-  认领一次，传输/5xx 结果不确定时标记 `uncertain` 且不自动重发。
-- Azure Timer 每小时 UTC 唤醒，并只在 `USER_TIMEZONE` 的本地 08 点发送，以适配 Flex
-  Consumption 不支持 Timer 时区设置的限制；迁移 head 为 `20260813_0009`，功能默认关闭。
+- 原始邮件正文、OAuth token、明文动作 URL 不入库、不进日志、不进 LangGraph checkpoint
+- 模型只看到脱敏文本和 `ACTION_LINK_*` 不透明引用
+- Review 页不解密动作链接；Daily Brief 只在最终渲染时解密普通待办链接
+- 控制面 API 需要独立的 `OPS_API_TOKEN`；浏览器走签名 session 与 CSRF
 
-## Phase 9A implemented
+发现漏洞请按 [SECURITY.md](SECURITY.md) 私下报告，不要在公开 Issue 里贴密钥或邮件原文。
 
-- `/agent` 提供登录后的图形化运行控制台，根路径会跳转到该页面。
-- 页面显示数据库/OAuth readiness、四个 PostgreSQL 运行时开关、能力上限、同步时间与游标、
-  安全错误码、聚合处理计数、Review 数量、Brief 状态和单次 operation 进度。
-- 页面可开启/暂停邮件同步、工作流、Calendar 写入和 Daily Brief，并可异步触发邮件同步、
-  bounded pending processing 与今日 Daily Brief 发送。
-- 管理员登录与 Agent Outlook 授权已拆分；普通 `/auth/login` 不修改 Graph Token Cache，只有
-  登录管理员主动点击“连接 / 更换 Outlook”才会更换邮箱授权，账号变化时旧 delta 游标会清空。
-- Daily Brief 当前收件地址可在认证后的控制台显示和修改；环境变量只作为数据库首次初始化值，
-  后续修改无需重新部署。地址不进入操作日志或公开 API。
-- 浏览器只使用签名 session 与 action-bound CSRF；`OPS_API_TOKEN`、OAuth token、邮件正文和
-  解密链接不会进入 HTML。
-- 手动任务继续写入 `operation_runs` 并只向 Azure Queue 发送 opaque UUID；Daily Brief 保持
-  每账户每天最多一次成功发送。迁移 head 为 `20260814_0011`。
+## 许可证
 
-完整边界与后续 phase 见
-[最终技术设计](docs/01_FINAL_TECHNICAL_DESIGN.md) 和 [AGENTS.md](AGENTS.md)。
+Copyright 2026 Theo。本项目按 [Apache License 2.0](LICENSE) 授权，说明见 [NOTICE](NOTICE)。
+
+Microsoft、Outlook、Azure、LangGraph、LangChain 是其各自所有者的商标。本项目不是这些公司的官方产品。
+
+公开仓库前仍须处理 GitHub `production` 环境里的明文变量，见 [docs/07_OPEN_SOURCE.md](docs/07_OPEN_SOURCE.md)。

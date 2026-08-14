@@ -1,6 +1,7 @@
 # Recruitment Inbox Agent
 
-Follow `docs/01_FINAL_TECHNICAL_DESIGN.md`.
+Follow `docs/01_FINAL_TECHNICAL_DESIGN.md`. Human-facing setup and the document map start in
+`README.md` and `docs/README.md`.
 
 ## Architecture
 

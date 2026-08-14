@@ -1,4 +1,4 @@
-# Test Plan through Phase 9A
+# Test Plan
 
 The automated suite covers:
 
@@ -75,6 +75,8 @@ The automated suite covers:
 - graphical Review and Brief preview chrome shared with the Agent console;
 - graphical Review authentication, privacy-safe fields, wrong-account denial, typed choices,
   optimistic versions, workflow resume, and read-only resolved state;
+- successor review identity after a resolved row, orphaned `needs_review` queue cards, and
+  `process-pending` reclaim of emails with no open review;
 - Phase 8 migration, `Mail.Send`, Timer, Key Vault, and disabled-by-default deployment configuration;
 - graph-state, object-representation and failure-audit privacy regressions; and
 - isolated PostgreSQL checkpoint connection configuration;
