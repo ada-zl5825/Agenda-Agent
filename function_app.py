@@ -11,6 +11,7 @@ from recruitment_agent.jobs.operations import (
     run_operation_job,
     run_scheduled_daily_brief_job,
     run_scheduled_mail_sync_job,
+    run_scheduled_pending_drain_job,
 )
 
 app = func.AsgiFunctionApp(
@@ -26,9 +27,10 @@ app = func.AsgiFunctionApp(
     use_monitor=True,
 )
 async def mail_sync_timer(timer: func.TimerRequest) -> None:
-    """Invoke the Phase 1 application job; the trigger contains no business rules."""
+    """Sync mail, then drain any waiting workflow batch. No business rules here."""
     del timer
     await run_scheduled_mail_sync_job()
+    await run_scheduled_pending_drain_job()
 
 
 @app.timer_trigger(

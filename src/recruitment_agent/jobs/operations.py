@@ -192,6 +192,19 @@ async def run_scheduled_mail_sync_job() -> None:
         LOGGER.info("mail_sync_skipped_lease_held")
 
 
+async def run_scheduled_pending_drain_job() -> None:
+    """Fan out waiting mail after sync, one bounded batch at a time until empty."""
+    try:
+        async with operations_control_service() as service:
+            await service.submit_scheduled_pending_drain()
+    except Exception as exc:
+        LOGGER.error(
+            "pending_drain_runtime_control_unavailable:%s",
+            type(exc).__name__,
+            extra={"error_type": type(exc).__name__},
+        )
+
+
 async def run_scheduled_daily_brief_job() -> None:
     try:
         if not runtime_capabilities().daily_brief_available:

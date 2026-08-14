@@ -568,11 +568,19 @@ class SqlAlchemyOperationsStore:
                     SourceEmailModel.account_id == account_id,
                     SourceEmailModel.processing_status
                     == SourceEmailProcessingStatus.PENDING.value,
+                    ~_busy_process_email(),
                 )
                 .order_by(SourceEmailModel.received_at)
                 .limit(limit)
             )
             return tuple(values)
+
+    async def has_drainable_source_emails(self, *, account_id: UUID) -> bool:
+        if await self.list_orphaned_needs_review_ids(account_id=account_id, limit=1):
+            return True
+        return bool(
+            await self.list_pending_source_email_ids(account_id=account_id, limit=1)
+        )
 
     async def list_orphaned_needs_review_ids(
         self,
@@ -710,3 +718,16 @@ class SqlAlchemyOperationsStore:
             result=result,  # type: ignore[arg-type]
             error_code=model.error_code,
         )
+
+
+def _busy_process_email() -> ColumnElement[bool]:
+    """True when a process-email operation is already queued or running."""
+    return exists(
+        select(OperationRunModel.id).where(
+            OperationRunModel.source_email_id == SourceEmailModel.id,
+            OperationRunModel.operation_type == OperationType.PROCESS_EMAIL.value,
+            OperationRunModel.status.in_(
+                (OperationStatus.QUEUED.value, OperationStatus.RUNNING.value)
+            ),
+        )
+    )

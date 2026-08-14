@@ -123,3 +123,25 @@ async def test_exhausted_startup_retry_logs_only_the_exception_type(
     assert logged[0][0] == "mail_sync_runtime_control_unavailable:%s"
     assert logged[0][1] == ("RuntimeError",)
     assert "sensitive detail" not in repr(logged)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_pending_drain_submits_through_the_control_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitted = 0
+
+    class Service:
+        async def submit_scheduled_pending_drain(self) -> None:
+            nonlocal submitted
+            submitted += 1
+
+    @asynccontextmanager
+    async def service():
+        yield Service()
+
+    monkeypatch.setattr(operation_jobs, "operations_control_service", service)
+
+    await operation_jobs.run_scheduled_pending_drain_job()
+
+    assert submitted == 1

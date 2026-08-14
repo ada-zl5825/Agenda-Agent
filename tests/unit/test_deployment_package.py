@@ -143,6 +143,7 @@ def test_queue_trigger_binds_a_literal_queue_name_for_flex_scaling() -> None:
 
     assert 'queue_name="recruitment-operations"' in function_entrypoints
     assert "%OPS_QUEUE_NAME%" not in function_entrypoints
+    assert "run_scheduled_pending_drain_job" in function_entrypoints
     assert "var operationsQueueName = 'recruitment-operations'" in infrastructure
 
 

@@ -77,6 +77,8 @@ The automated suite covers:
   optimistic versions, workflow resume, and read-only resolved state;
 - successor review identity after a resolved row, orphaned `needs_review` queue cards, and
   `process-pending` reclaim of emails with no open review;
+- `process-pending` drains every waiting email in bounded batches, skips already-queued
+  process-email operations, and the mail-sync timer submits that drain only when workflow is on;
 - Phase 8 migration, `Mail.Send`, Timer, Key Vault, and disabled-by-default deployment configuration;
 - graph-state, object-representation and failure-audit privacy regressions; and
 - isolated PostgreSQL checkpoint connection configuration;
