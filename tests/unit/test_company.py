@@ -24,6 +24,7 @@ from recruitment_agent.domain.company import (
 from recruitment_agent.domain.company_resolution import CompanyResolver
 from recruitment_agent.domain.company_seed import (
     BYTEDANCE_ID,
+    CHINA_INTERNET_MAJOR_SEEDS,
     COMMON_COMPANY_SEEDS,
     TIKTOK_ID,
 )
@@ -345,8 +346,8 @@ async def test_common_seed_is_idempotent_and_orders_parent_before_child() -> Non
 
 
 def test_expanded_common_seed_has_unique_exact_match_keys() -> None:
-    assert len(COMMON_COMPANY_SEEDS) == 35
-    assert len({seed.id for seed in COMMON_COMPANY_SEEDS}) == 35
+    assert len(COMMON_COMPANY_SEEDS) == 122
+    assert len({seed.id for seed in COMMON_COMPANY_SEEDS}) == 122
     assert len(
         {normalize_company_name(seed.canonical_name) for seed in COMMON_COMPANY_SEEDS}
     ) == len(COMMON_COMPANY_SEEDS)
@@ -359,3 +360,26 @@ def test_expanded_common_seed_has_unique_exact_match_keys() -> None:
         for alias in seed.aliases:
             owner = alias_owners.setdefault(alias.normalized_alias, seed.id)
             assert owner == seed.id
+
+    seed_ids = {seed.id for seed in COMMON_COMPANY_SEEDS}
+    for seed in COMMON_COMPANY_SEEDS:
+        if seed.parent_company_id is not None:
+            assert seed.parent_company_id in seed_ids
+
+
+def test_china_internet_major_catalog_reaches_one_hundred_reviewed_employers() -> None:
+    """13 China entries already ship in the foundation catalog; the reviewed
+    expansion brings the mainstream China internet coverage to exactly 100."""
+    assert len(CHINA_INTERNET_MAJOR_SEEDS) == 87
+    foundation_china = 13
+    assert foundation_china + len(CHINA_INTERNET_MAJOR_SEEDS) == 100
+
+    # Aliases must never silently collide with another company's canonical name.
+    canonical_names = {
+        normalize_company_name(seed.canonical_name): seed.id
+        for seed in COMMON_COMPANY_SEEDS
+    }
+    for seed in COMMON_COMPANY_SEEDS:
+        for alias in seed.aliases:
+            owner = canonical_names.get(alias.normalized_alias)
+            assert owner is None or owner == seed.id

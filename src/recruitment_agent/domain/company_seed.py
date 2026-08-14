@@ -1,4 +1,10 @@
-"""Small deterministic starter catalog; operators may add reviewed records later."""
+"""Deterministic reviewed employer catalog.
+
+The catalog is split into the original foundation seeds and the reviewed
+China internet major expansion. Together they must keep globally unique
+normalized canonical names, aliases, and domains, because Phase 4.5
+resolution performs exact matching only.
+"""
 
 from uuid import UUID, uuid5
 
@@ -53,7 +59,7 @@ BARCLAYS_ID = company_seed_id("barclays")
 BLOOMBERG_ID = company_seed_id("bloomberg")
 
 
-COMMON_COMPANY_SEEDS: tuple[CompanySeed, ...] = (
+_FOUNDATION_COMPANY_SEEDS: tuple[CompanySeed, ...] = (
     CompanySeed(
         id=BYTEDANCE_ID,
         canonical_name="ByteDance",
@@ -392,4 +398,566 @@ COMMON_COMPANY_SEEDS: tuple[CompanySeed, ...] = (
             CompanyDomainSeed(domain="bloomberg.net"),
         ),
     ),
+)
+
+
+def _seed(
+    slug: str,
+    canonical_name: str,
+    display_name: str,
+    *,
+    zh: tuple[str, ...] = (),
+    en: tuple[str, ...] = (),
+    domains: tuple[str, ...] = (),
+    entity_type: CompanyEntityType = CompanyEntityType.EMPLOYER,
+    parent_company_id: UUID | None = None,
+) -> CompanySeed:
+    """Compact reviewed-record constructor for the China internet catalog."""
+    return CompanySeed(
+        id=company_seed_id(slug),
+        canonical_name=canonical_name,
+        display_name=display_name,
+        entity_type=entity_type,
+        parent_company_id=parent_company_id,
+        aliases=(
+            *(CompanyAliasSeed(alias=alias, language="zh") for alias in zh),
+            *(CompanyAliasSeed(alias=alias, language="en") for alias in en),
+        ),
+        domains=tuple(CompanyDomainSeed(domain=domain) for domain in domains),
+    )
+
+
+#: Reviewed expansion covering mainstream China internet employers. Together
+#: with the 13 China entries already present in the foundation catalog
+#: (ByteDance, TikTok, Tencent, Alibaba Group, Huawei, Meituan, Baidu, JD.com,
+#: NetEase, Xiaomi, DiDi, Kuaishou, Trip.com Group) this yields 100 reviewed
+#: China internet majors.
+CHINA_INTERNET_MAJOR_SEEDS: tuple[CompanySeed, ...] = (
+    # --- Major-group subsidiaries and brands that recruit under their own name.
+    _seed(
+        "ant-group",
+        "Ant Group",
+        "Ant Group / 蚂蚁集团",
+        zh=("蚂蚁集团", "蚂蚁金服", "支付宝"),
+        en=("Alipay",),
+        domains=("antgroup.com", "alipay.com"),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=ALIBABA_ID,
+    ),
+    _seed(
+        "alibaba-cloud",
+        "Alibaba Cloud",
+        "Alibaba Cloud / 阿里云",
+        zh=("阿里云",),
+        en=("Aliyun",),
+        domains=("aliyun.com", "alibabacloud.com"),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=ALIBABA_ID,
+    ),
+    _seed(
+        "cainiao",
+        "Cainiao",
+        "Cainiao / 菜鸟",
+        zh=("菜鸟", "菜鸟网络"),
+        domains=("cainiao.com",),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=ALIBABA_ID,
+    ),
+    _seed(
+        "ele-me",
+        "Ele.me",
+        "Ele.me / 饿了么",
+        zh=("饿了么",),
+        domains=("ele.me",),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=ALIBABA_ID,
+    ),
+    _seed(
+        "fliggy",
+        "Fliggy",
+        "Fliggy / 飞猪",
+        zh=("飞猪",),
+        domains=("fliggy.com",),
+        entity_type=CompanyEntityType.BRAND,
+        parent_company_id=ALIBABA_ID,
+    ),
+    _seed(
+        "douyin",
+        "Douyin",
+        "Douyin / 抖音",
+        zh=("抖音", "抖音集团"),
+        domains=("douyin.com",),
+        entity_type=CompanyEntityType.BRAND,
+        parent_company_id=BYTEDANCE_ID,
+    ),
+    _seed(
+        "feishu",
+        "Feishu",
+        "Feishu / 飞书",
+        zh=("飞书",),
+        en=("Lark",),
+        domains=("feishu.cn",),
+        entity_type=CompanyEntityType.BRAND,
+        parent_company_id=BYTEDANCE_ID,
+    ),
+    _seed(
+        "volcano-engine",
+        "Volcano Engine",
+        "Volcano Engine / 火山引擎",
+        zh=("火山引擎",),
+        domains=("volcengine.com",),
+        entity_type=CompanyEntityType.BRAND,
+        parent_company_id=BYTEDANCE_ID,
+    ),
+    _seed(
+        "tencent-cloud",
+        "Tencent Cloud",
+        "Tencent Cloud / 腾讯云",
+        zh=("腾讯云",),
+        domains=("cloud.tencent.com",),
+        entity_type=CompanyEntityType.BRAND,
+        parent_company_id=TENCENT_ID,
+    ),
+    _seed(
+        "tencent-music",
+        "Tencent Music",
+        "Tencent Music / 腾讯音乐",
+        zh=("腾讯音乐",),
+        en=("TME",),
+        domains=("tencentmusic.com",),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=TENCENT_ID,
+    ),
+    _seed(
+        "jd-logistics",
+        "JD Logistics",
+        "JD Logistics / 京东物流",
+        zh=("京东物流",),
+        domains=("jdl.com",),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=JD_ID,
+    ),
+    _seed(
+        "jd-technology",
+        "JD Technology",
+        "JD Technology / 京东科技",
+        zh=("京东科技", "京东数科"),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=JD_ID,
+    ),
+    _seed(
+        "qunar",
+        "Qunar",
+        "Qunar / 去哪儿",
+        zh=("去哪儿", "去哪儿网"),
+        domains=("qunar.com",),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=TRIP_COM_ID,
+    ),
+    _seed(
+        "youdao",
+        "Youdao",
+        "Youdao / 网易有道",
+        zh=("有道", "网易有道"),
+        domains=("youdao.com",),
+        entity_type=CompanyEntityType.SUBSIDIARY,
+        parent_company_id=NETEASE_ID,
+    ),
+    # --- Social, content, and entertainment platforms.
+    _seed(
+        "weibo",
+        "Weibo",
+        "Weibo / 微博",
+        zh=("微博", "新浪微博"),
+        domains=("weibo.com",),
+    ),
+    _seed("sina", "Sina", "Sina / 新浪", zh=("新浪",), domains=("sina.com.cn",)),
+    _seed("sohu", "Sohu", "Sohu / 搜狐", zh=("搜狐",), domains=("sohu.com",)),
+    _seed("zhihu", "Zhihu", "Zhihu / 知乎", zh=("知乎",), domains=("zhihu.com",)),
+    _seed(
+        "xiaohongshu",
+        "Xiaohongshu",
+        "Xiaohongshu / 小红书",
+        zh=("小红书",),
+        en=("REDnote",),
+        domains=("xiaohongshu.com",),
+    ),
+    _seed(
+        "bilibili",
+        "Bilibili",
+        "Bilibili / 哔哩哔哩",
+        zh=("哔哩哔哩", "B站"),
+        domains=("bilibili.com",),
+    ),
+    _seed("iqiyi", "iQIYI", "iQIYI / 爱奇艺", zh=("爱奇艺",), domains=("iqiyi.com",)),
+    _seed(
+        "mango-tv",
+        "Mango TV",
+        "Mango TV / 芒果TV",
+        zh=("芒果TV", "芒果超媒"),
+        domains=("mgtv.com",),
+    ),
+    _seed(
+        "ximalaya",
+        "Ximalaya",
+        "Ximalaya / 喜马拉雅",
+        zh=("喜马拉雅",),
+        domains=("ximalaya.com",),
+    ),
+    _seed("douyu", "Douyu", "Douyu / 斗鱼", zh=("斗鱼",), domains=("douyu.com",)),
+    _seed("huya", "Huya", "Huya / 虎牙", zh=("虎牙",), domains=("huya.com",)),
+    _seed(
+        "joyy",
+        "JOYY",
+        "JOYY / 欢聚集团",
+        zh=("欢聚集团",),
+        en=("YY",),
+        domains=("joyy.com",),
+    ),
+    _seed(
+        "momo",
+        "Momo",
+        "Momo / 陌陌",
+        zh=("陌陌", "挚文集团"),
+        domains=("immomo.com",),
+    ),
+    # --- E-commerce and retail platforms.
+    _seed(
+        "pinduoduo",
+        "Pinduoduo",
+        "Pinduoduo / 拼多多",
+        zh=("拼多多",),
+        en=("PDD Holdings", "Temu"),
+        domains=("pinduoduo.com",),
+    ),
+    _seed("vipshop", "Vipshop", "Vipshop / 唯品会", zh=("唯品会",), domains=("vip.com",)),
+    _seed(
+        "suning",
+        "Suning",
+        "Suning / 苏宁易购",
+        zh=("苏宁", "苏宁易购"),
+        domains=("suning.com",),
+    ),
+    # --- Classifieds and vertical platforms.
+    _seed("58-com", "58.com", "58.com / 58同城", zh=("58同城",), domains=("58.com",)),
+    _seed(
+        "ke-holdings",
+        "KE Holdings",
+        "KE Holdings / 贝壳",
+        zh=("贝壳", "贝壳找房", "链家"),
+        domains=("ke.com",),
+    ),
+    _seed(
+        "autohome",
+        "Autohome",
+        "Autohome / 汽车之家",
+        zh=("汽车之家",),
+        domains=("autohome.com.cn",),
+    ),
+    _seed("yiche", "Yiche", "Yiche / 易车", zh=("易车",), domains=("yiche.com",)),
+    _seed(
+        "kanzhun",
+        "Kanzhun",
+        "Kanzhun / BOSS直聘",
+        zh=("BOSS直聘", "看准网"),
+        domains=("zhipin.com",),
+    ),
+    _seed("liepin", "Liepin", "Liepin / 猎聘", zh=("猎聘",), domains=("liepin.com",)),
+    _seed(
+        "zhaopin",
+        "Zhaopin",
+        "Zhaopin / 智联招聘",
+        zh=("智联招聘", "智联"),
+        domains=("zhaopin.com",),
+    ),
+    _seed("51job", "51job", "51job / 前程无忧", zh=("前程无忧",), domains=("51job.com",)),
+    # --- Travel and local services.
+    _seed(
+        "tongcheng-travel",
+        "Tongcheng Travel",
+        "Tongcheng Travel / 同程旅行",
+        zh=("同程", "同程旅行"),
+        domains=("ly.com",),
+    ),
+    # --- Mobility, EV, and autonomous driving.
+    _seed(
+        "hello-inc",
+        "Hello Inc.",
+        "Hello Inc. / 哈啰",
+        zh=("哈啰", "哈啰出行"),
+        domains=("hellobike.com",),
+    ),
+    _seed("nio", "NIO", "NIO / 蔚来", zh=("蔚来",), domains=("nio.com",)),
+    _seed(
+        "xpeng",
+        "XPeng",
+        "XPeng / 小鹏汽车",
+        zh=("小鹏", "小鹏汽车"),
+        domains=("xiaopeng.com",),
+    ),
+    _seed(
+        "li-auto",
+        "Li Auto",
+        "Li Auto / 理想汽车",
+        zh=("理想汽车", "理想"),
+        domains=("lixiang.com",),
+    ),
+    _seed(
+        "horizon-robotics",
+        "Horizon Robotics",
+        "Horizon Robotics / 地平线",
+        zh=("地平线",),
+        domains=("horizon.auto",),
+    ),
+    _seed(
+        "pony-ai",
+        "Pony.ai",
+        "Pony.ai / 小马智行",
+        zh=("小马智行",),
+        domains=("pony.ai",),
+    ),
+    _seed(
+        "weride",
+        "WeRide",
+        "WeRide / 文远知行",
+        zh=("文远知行",),
+        domains=("weride.ai",),
+    ),
+    _seed("momenta", "Momenta", "Momenta", domains=("momenta.ai",)),
+    # --- Fintech.
+    _seed("lufax", "Lufax", "Lufax / 陆金所", zh=("陆金所",), domains=("lu.com",)),
+    _seed(
+        "du-xiaoman",
+        "Du Xiaoman",
+        "Du Xiaoman / 度小满",
+        zh=("度小满", "度小满金融"),
+        domains=("duxiaoman.com",),
+    ),
+    _seed("webank", "WeBank", "WeBank / 微众银行", zh=("微众银行",), domains=("webank.com",)),
+    _seed(
+        "east-money",
+        "East Money",
+        "East Money / 东方财富",
+        zh=("东方财富",),
+        domains=("eastmoney.com",),
+    ),
+    _seed("futu", "Futu", "Futu / 富途", zh=("富途", "富途证券"), domains=("futunn.com",)),
+    # --- Security, cloud, and enterprise software.
+    _seed(
+        "qihoo-360",
+        "Qihoo 360",
+        "Qihoo 360 / 三六零",
+        zh=("三六零", "奇虎360", "360集团"),
+        domains=("360.cn",),
+    ),
+    _seed(
+        "kingsoft",
+        "Kingsoft",
+        "Kingsoft / 金山软件",
+        zh=("金山软件",),
+        domains=("kingsoft.com",),
+    ),
+    _seed(
+        "kingsoft-office",
+        "Kingsoft Office",
+        "Kingsoft Office / 金山办公",
+        zh=("金山办公",),
+        en=("WPS",),
+        domains=("wps.cn",),
+    ),
+    _seed(
+        "kingsoft-cloud",
+        "Kingsoft Cloud",
+        "Kingsoft Cloud / 金山云",
+        zh=("金山云",),
+        domains=("ksyun.com",),
+    ),
+    _seed(
+        "qi-an-xin",
+        "Qi An Xin",
+        "Qi An Xin / 奇安信",
+        zh=("奇安信",),
+        domains=("qianxin.com",),
+    ),
+    _seed(
+        "sangfor",
+        "Sangfor",
+        "Sangfor / 深信服",
+        zh=("深信服",),
+        domains=("sangfor.com.cn",),
+    ),
+    # --- AI platforms and research labs.
+    _seed(
+        "iflytek",
+        "iFlytek",
+        "iFlytek / 科大讯飞",
+        zh=("科大讯飞", "讯飞"),
+        domains=("iflytek.com",),
+    ),
+    _seed(
+        "sensetime",
+        "SenseTime",
+        "SenseTime / 商汤科技",
+        zh=("商汤", "商汤科技"),
+        domains=("sensetime.com",),
+    ),
+    _seed(
+        "megvii",
+        "Megvii",
+        "Megvii / 旷视科技",
+        zh=("旷视", "旷视科技"),
+        domains=("megvii.com",),
+    ),
+    _seed(
+        "zhipu-ai",
+        "Zhipu AI",
+        "Zhipu AI / 智谱",
+        zh=("智谱", "智谱AI"),
+        domains=("zhipuai.cn",),
+    ),
+    _seed(
+        "moonshot-ai",
+        "Moonshot AI",
+        "Moonshot AI / 月之暗面",
+        zh=("月之暗面",),
+        en=("Kimi",),
+        domains=("moonshot.cn",),
+    ),
+    _seed("minimax", "MiniMax", "MiniMax", zh=("稀宇科技",), domains=("minimaxi.com",)),
+    _seed(
+        "deepseek",
+        "DeepSeek",
+        "DeepSeek / 深度求索",
+        zh=("深度求索",),
+        domains=("deepseek.com",),
+    ),
+    _seed(
+        "baichuan-ai",
+        "Baichuan AI",
+        "Baichuan AI / 百川智能",
+        zh=("百川智能",),
+        domains=("baichuan-ai.com",),
+    ),
+    _seed("01-ai", "01.AI", "01.AI / 零一万物", zh=("零一万物",), domains=("01.ai",)),
+    _seed(
+        "stepfun",
+        "StepFun",
+        "StepFun / 阶跃星辰",
+        zh=("阶跃星辰",),
+        domains=("stepfun.com",),
+    ),
+    # --- Consumer hardware with large software organizations.
+    _seed("oppo", "OPPO", "OPPO", domains=("oppo.com",)),
+    _seed("vivo", "vivo", "vivo", domains=("vivo.com",)),
+    _seed("honor", "Honor", "Honor / 荣耀", zh=("荣耀",), domains=("hihonor.com",)),
+    _seed("lenovo", "Lenovo", "Lenovo / 联想", zh=("联想",), domains=("lenovo.com",)),
+    _seed("dji", "DJI", "DJI / 大疆", zh=("大疆", "大疆创新"), domains=("dji.com",)),
+    _seed(
+        "insta360",
+        "Insta360",
+        "Insta360 / 影石",
+        zh=("影石",),
+        domains=("insta360.com",),
+    ),
+    # --- Game studios and publishers.
+    _seed(
+        "mihoyo",
+        "miHoYo",
+        "miHoYo / 米哈游",
+        zh=("米哈游",),
+        en=("HoYoverse",),
+        domains=("mihoyo.com",),
+    ),
+    _seed(
+        "lilith-games",
+        "Lilith Games",
+        "Lilith Games / 莉莉丝",
+        zh=("莉莉丝",),
+        domains=("lilith.com",),
+    ),
+    _seed(
+        "papergames",
+        "Papergames",
+        "Papergames / 叠纸",
+        zh=("叠纸游戏", "叠纸网络"),
+        domains=("papegames.cn",),
+    ),
+    _seed(
+        "game-science",
+        "Game Science",
+        "Game Science / 游戏科学",
+        zh=("游戏科学",),
+        domains=("gamesci.com.cn",),
+    ),
+    _seed(
+        "perfect-world",
+        "Perfect World",
+        "Perfect World / 完美世界",
+        zh=("完美世界",),
+        domains=("wanmei.com",),
+    ),
+    _seed(
+        "37-interactive",
+        "37 Interactive Entertainment",
+        "37 Interactive / 三七互娱",
+        zh=("三七互娱",),
+        domains=("37.com",),
+    ),
+    _seed(
+        "hypergryph",
+        "Hypergryph",
+        "Hypergryph / 鹰角网络",
+        zh=("鹰角网络", "鹰角"),
+        domains=("hypergryph.com",),
+    ),
+    # --- Logistics.
+    _seed(
+        "sf-express",
+        "SF Express",
+        "SF Express / 顺丰",
+        zh=("顺丰", "顺丰速运"),
+        domains=("sf-express.com",),
+    ),
+    _seed(
+        "zto-express",
+        "ZTO Express",
+        "ZTO Express / 中通快递",
+        zh=("中通", "中通快递"),
+        domains=("zto.com",),
+    ),
+    # --- Education technology.
+    _seed(
+        "tal-education",
+        "TAL Education",
+        "TAL Education / 好未来",
+        zh=("好未来", "学而思"),
+        domains=("100tal.com",),
+    ),
+    _seed(
+        "new-oriental",
+        "New Oriental",
+        "New Oriental / 新东方",
+        zh=("新东方",),
+        domains=("xdf.cn",),
+    ),
+    _seed(
+        "yuanfudao",
+        "Yuanfudao",
+        "Yuanfudao / 猿辅导",
+        zh=("猿辅导",),
+        domains=("yuanfudao.com",),
+    ),
+    _seed(
+        "zuoyebang",
+        "Zuoyebang",
+        "Zuoyebang / 作业帮",
+        zh=("作业帮",),
+        domains=("zuoyebang.com",),
+    ),
+)
+
+
+COMMON_COMPANY_SEEDS: tuple[CompanySeed, ...] = (
+    *_FOUNDATION_COMPANY_SEEDS,
+    *CHINA_INTERNET_MAJOR_SEEDS,
 )
