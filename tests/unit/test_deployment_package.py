@@ -130,6 +130,7 @@ def test_phase_nine_a_deploys_app_and_infrastructure_on_separate_paths() -> None
     assert "recruitment-operations" in infrastructure
     assert "OPS_API_TOKEN: '@Microsoft.KeyVault(" in infrastructure
     assert "azure-storage-queue==" in requirements
+    assert "aiohttp==" in requirements
     assert "^(alembic/|infra/" in app_workflow
     assert "schema_change" in infra_workflow
     assert "Hold application deployment until the migration succeeds" in infra_workflow

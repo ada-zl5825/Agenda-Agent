@@ -47,8 +47,13 @@ async def azure_operation_queue(
     ).strip()
     if not account_name:
         raise RuntimeError("AzureWebJobsStorage__accountName is required for operations queue")
+    managed_identity_client_id = (
+        os.getenv("AzureWebJobsStorage__clientId")  # noqa: SIM112
+        or os.getenv("AZURE_CLIENT_ID")
+        or None
+    )
     credential = DefaultAzureCredential(
-        managed_identity_client_id=os.getenv("AZURE_CLIENT_ID") or None
+        managed_identity_client_id=managed_identity_client_id
     )
     client = QueueClient(
         account_url=f"https://{account_name}.queue.core.windows.net",
