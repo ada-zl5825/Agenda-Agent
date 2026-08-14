@@ -43,9 +43,12 @@ async def daily_brief_timer(timer: func.TimerRequest) -> None:
     await run_scheduled_daily_brief_job()
 
 
+# The queue name must be a literal: the Flex Consumption scale controller reads
+# trigger metadata outside the host and does not resolve %app-setting% placeholders,
+# so a placeholder here means the worker is never scaled from zero.
 @app.queue_trigger(
     arg_name="message",
-    queue_name="%OPS_QUEUE_NAME%",
+    queue_name="recruitment-operations",
     connection="AzureWebJobsStorage",
 )
 async def operations_queue_worker(message: func.QueueMessage) -> None:
