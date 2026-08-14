@@ -130,10 +130,13 @@ automatically because the message might already have been accepted. The `app.dai
 stores no rendered HTML, recipient, original email body, or decrypted URL.
 
 `GET /brief/today`, `GET /reviews`, and `GET /reviews/{review_id}` require the signed browser
-session established by the Microsoft callback. Review detail GETs are read-only. Resolution POSTs
-require a review/version-bound CSRF token, a current optimistic-concurrency version, and a typed
-server-validated decision before LangGraph resumes. Review pages expose only secure-link reference,
-type, and domain metadata; they never decrypt action URLs.
+session established by the Microsoft callback. Review and Brief preview pages reuse the Agent
+console chrome (navy topbar, panels, metric cards, and typed decision forms). The emailed Daily
+Brief stays a mail-safe document and does not include console navigation. Review detail GETs are
+read-only. Resolution POSTs require a review/version-bound CSRF token, a current
+optimistic-concurrency version, and a typed server-validated decision before LangGraph resumes.
+Review pages expose only secure-link reference, type, and domain metadata; they never decrypt
+action URLs.
 
 After the Phase 3.5 migration, idempotently load or reconcile the reviewed starter company catalog
 from the same VNet-connected environment:
@@ -373,7 +376,7 @@ forward, datetime-override, and duplicate-calendar revisions. Operational conseq
   redirects there with `error=`) and correct the value, or ignore the item.
   Emails already marked `failed` before this revision do not resume in place. Submit
   `process-pending` so a new `processing_run_id` is created, then complete both reviews.
-  `/brief/today` is the live preview; a Daily Brief email already sent that local day is
+  `/brief/today` is the live console-styled preview; a Daily Brief email already sent that local day is
   at-most-once and will not rewrite. Active `offer` / `rejection` / `application_received`
   events appear under `NEW UPDATES`.
 

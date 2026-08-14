@@ -39,6 +39,43 @@ _EVENT_TYPE_LABELS: dict[str, str] = {
     "unknown": "待分类",
 }
 
+_FIELD_LABELS: dict[str, str] = {
+    "subject": "主题",
+    "sender_domain": "发件域名",
+    "received_at": "收到时间",
+    "open_original_email": "原邮件",
+    "canonical_company": "公司",
+    "company_raw": "原文公司",
+    "company": "公司",
+    "role_raw": "职位",
+    "role": "职位",
+    "status": "申请状态",
+    "event_type": "事件类型",
+    "interview_round": "面试轮次",
+    "action_summary": "待办摘要",
+    "meeting_platform": "会议平台",
+    "location": "地点",
+    "source_datetime_text": "原文开始时间",
+    "source_deadline_text": "原文截止日期",
+    "normalized_datetime": "抽出的开始时间",
+    "normalized_deadline": "抽出的截止日期",
+    "timezone_explicit": "邮件是否写明时区",
+    "timezone_text": "原文时区",
+    "datetime_confidence": "时间置信度",
+    "company_confidence": "公司置信度",
+    "event_confidence": "事件置信度",
+    "validator_findings": "校验发现",
+    "resolution": "处理结果",
+    "resolved_at": "确认时间",
+    "workflow_status": "工作流状态",
+    "timezone": "时区",
+}
+
+_STATUS_LABELS: dict[str, str] = {
+    "open": "待确认",
+    "resolved": "已确认",
+}
+
 _CHOICE_LABELS: dict[str, str] = {
     "Europe/London": "伦敦 (Europe/London)",
     "Asia/Shanghai": "上海 (Asia/Shanghai)",
@@ -124,6 +161,14 @@ def clock_kind(reason: str) -> str | None:
     if reason in {COMBINED_DATETIME_REASON, "datetime_unresolved"}:
         return "start"
     return None
+
+
+def field_label(key: str) -> str:
+    return _FIELD_LABELS.get(key, key)
+
+
+def review_status_label(status: str) -> str:
+    return _STATUS_LABELS.get(status, status)
 
 
 def clock_field_copy(reason: str) -> tuple[str, str]:

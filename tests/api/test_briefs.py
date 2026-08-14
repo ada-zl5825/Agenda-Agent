@@ -7,7 +7,6 @@ import pytest
 from recruitment_agent.api.app import create_app
 from recruitment_agent.api.briefs import get_brief_renderer
 from recruitment_agent.api.dependencies import get_web_session_manager
-from recruitment_agent.briefs.renderer import RenderedBrief
 from recruitment_agent.web.security import WebSessionManager
 
 
@@ -22,9 +21,9 @@ async def test_brief_preview_requires_the_authenticated_microsoft_connection() -
     manager = WebSessionManager(key=b"s" * 32, clock=Clock())
     rendered_for: list[object] = []
 
-    async def render(*, account_id: object) -> RenderedBrief:
+    async def render(*, account_id: object) -> str:
         rendered_for.append(account_id)
-        return RenderedBrief(subject="Brief", html="<h1>Recruitment Brief</h1>", text="Brief")
+        return "<h1>Recruitment Brief</h1>"
 
     application = create_app()
     application.dependency_overrides[get_web_session_manager] = lambda: manager

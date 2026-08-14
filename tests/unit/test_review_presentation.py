@@ -32,6 +32,9 @@ def test_queue_leads_with_company_and_action_not_error_codes() -> None:
     assert "确认时区" in html
     assert "面试" in html
     assert "8月20日下午3点" in html
+    assert "Agenda Agent" in html
+    assert "今日 Brief" in html
+    assert "打开" in html
     assert "TIMEZONE_AMBIGUITY" not in html
     assert "timezone_ambiguity" not in html
 
@@ -80,6 +83,9 @@ def test_detail_form_says_start_time_for_unresolved_event_clock() -> None:
     assert "开始时间" in html
     assert "不是结束时间" in html
     assert "DATETIME_CONFLICT" in html
+    assert "Agenda Agent" in html
+    assert "确认并继续" in html
+    assert "class=\"topbar\"" in html
 
 
 def test_review_headline_falls_back_to_subject() -> None:

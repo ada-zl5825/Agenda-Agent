@@ -72,6 +72,7 @@ The automated suite covers:
 - same-day dispatch idempotency plus accepted, failed, and uncertain send auditing without content;
 - Graph `sendMail` payload, 202 acceptance, 401 refresh, safe 429 retry, and no-retry 5xx boundary;
 - signed session expiry/tamper rejection, safe return paths, and review/version-bound CSRF;
+- graphical Review and Brief preview chrome shared with the Agent console;
 - graphical Review authentication, privacy-safe fields, wrong-account denial, typed choices,
   optimistic versions, workflow resume, and read-only resolved state;
 - Phase 8 migration, `Mail.Send`, Timer, Key Vault, and disabled-by-default deployment configuration;

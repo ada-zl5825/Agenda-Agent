@@ -135,9 +135,15 @@ class DailyBriefService:
         self._public_app_base_url = public_app_base_url.rstrip("/")
 
     async def render_today(self, *, account_id: UUID) -> RenderedBrief:
+        return self._renderer.render(await self._load_today(account_id=account_id))
+
+    async def preview_today(self, *, account_id: UUID) -> str:
+        return self._renderer.render_console(await self._load_today(account_id=account_id))
+
+    async def _load_today(self, *, account_id: UUID) -> DailyBriefSnapshot:
         now = self._clock.now()
         today = now.astimezone(ZoneInfo(self._timezone)).date()
-        return await self._render(
+        return await self._load_resolved_snapshot(
             account_id=account_id,
             brief_date=today,
             generated_at=now,
@@ -150,6 +156,21 @@ class DailyBriefService:
         brief_date: date,
         generated_at: datetime,
     ) -> RenderedBrief:
+        return self._renderer.render(
+            await self._load_resolved_snapshot(
+                account_id=account_id,
+                brief_date=brief_date,
+                generated_at=generated_at,
+            )
+        )
+
+    async def _load_resolved_snapshot(
+        self,
+        *,
+        account_id: UUID,
+        brief_date: date,
+        generated_at: datetime,
+    ) -> DailyBriefSnapshot:
         snapshot = await self._store.load_snapshot(
             account_id=account_id,
             brief_date=brief_date,
@@ -157,8 +178,7 @@ class DailyBriefService:
             public_app_base_url=self._public_app_base_url,
             generated_at=generated_at,
         )
-        resolved = await self._resolve_action_links(snapshot)
-        return self._renderer.render(resolved)
+        return await self._resolve_action_links(snapshot)
 
     async def send_today(self, *, account_id: UUID, recipient: str) -> bool:
         now = self._clock.now()

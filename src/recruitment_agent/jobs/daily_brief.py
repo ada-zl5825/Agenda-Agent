@@ -75,6 +75,11 @@ async def render_daily_brief_today(*, account_id: UUID) -> RenderedBrief:
         return await service.render_today(account_id=account_id)
 
 
+async def preview_daily_brief_today(*, account_id: UUID) -> str:
+    async with _daily_brief_service() as service:
+        return await service.preview_today(account_id=account_id)
+
+
 @asynccontextmanager
 async def _daily_brief_service() -> AsyncIterator[DailyBriefService]:
     app_settings = get_settings()

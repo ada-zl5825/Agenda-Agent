@@ -16,6 +16,7 @@ from recruitment_agent.application.agent_console import (
     AgentManualAction,
 )
 from recruitment_agent.application.operations import OperationStatus
+from recruitment_agent.dashboard.chrome import console_page
 
 
 class AgentDashboardRenderer:
@@ -423,77 +424,4 @@ class AgentDashboardRenderer:
 
     @staticmethod
     def _page(title: str, content: str, *, auto_refresh: str = "") -> str:
-        return (
-            '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
-            '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f"{auto_refresh}<title>{escape(title)}</title>"
-            "<style>"
-            ":root{color-scheme:light;--ink:#10233f;--muted:#64748b;--line:#dce4ef;"
-            "--blue:#1769e0;--navy:#071a34;--green:#0f9f6e;--amber:#c56a08;--red:#c43d4b}"
-            "*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:var(--ink);"
-            "font-family:Inter,Segoe UI,Arial,sans-serif}a{color:var(--blue);text-decoration:none}"
-            ".topbar{background:var(--navy);color:#fff}.topbar-inner{max-width:1180px;margin:auto;"
-            "height:62px;padding:0 24px;display:flex;align-items:center;justify-content:space-between}"
-            ".brand{font-weight:750;letter-spacing:.01em}.nav{display:flex;gap:22px}.nav a{color:#c9d8eb}"
-            ".shell{max-width:1180px;margin:0 auto;padding:30px 24px 56px}.hero{display:flex;"
-            "align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}.eyebrow{"
-            "margin:0 0 8px;color:var(--blue);font-size:12px;font-weight:800;letter-spacing:.14em}"
-            "h1{font-size:38px;line-height:1.1;margin:0}.subtitle{color:var(--muted);margin:10px 0 0}"
-            ".state{display:inline-flex;align-items:center;gap:9px;padding:10px 14px;border-radius:99px;"
-            "background:#fff;border:1px solid var(--line);font-weight:700;white-space:nowrap}.dot,.indicator{"
-            "display:inline-block;width:10px;height:10px;border-radius:50%}.state.ok .dot,.indicator.on{"
-            "background:var(--green);box-shadow:0 0 0 4px #d9f5ea}.state.warn .dot,.indicator.off{"
-            "background:var(--amber);box-shadow:0 0 0 4px #fff0d6}.panel{background:#fff;border:1px solid "
-            "var(--line);border-radius:18px;padding:22px;margin-top:18px;box-shadow:0 6px 24px #18395d0a}"
-            ".section-head{display:flex;justify-content:space-between;margin-bottom:18px}.section-head h2{"
-            "font-size:20px;margin:0}.section-note{color:var(--muted);font-size:13px;margin:6px 0 0}"
-            ".metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.metric{"
-            "position:relative;display:flex;flex-direction:column;gap:7px;padding:16px;background:#f8fafc;"
-            "border:1px solid #edf1f6;border-radius:13px;color:var(--ink)}.metric-label{font-size:13px;"
-            "color:var(--muted)}.metric strong{font-size:21px}.metric-health{font-size:11px;font-weight:800;"
-            "text-transform:uppercase}.metric-health.good{color:var(--green)}.metric-health.bad{color:var(--amber)}"
-            ".table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px 8px;"
-            "border-top:1px solid #edf1f6;font-size:13px}th{width:35%;color:var(--muted);font-weight:600}"
-            ".switch-list{border-top:1px solid #edf1f6}.switch-row{display:flex;align-items:center;justify-content:"
-            "space-between;gap:20px;padding:17px 4px;border-bottom:1px solid #edf1f6}.switch-title{display:flex;"
-            "align-items:center;gap:10px}.switch-copy p{color:var(--muted);font-size:13px;margin:7px 0 0}.pill{"
-            "font-size:11px;font-weight:800;padding:4px 7px;border-radius:99px}.pill.enabled{color:#087a55;"
-            "background:#dff7ed}.pill.paused{color:#8c5714;background:#fff0d6}.unavailable{color:var(--red)}"
-            ".button{border:0;border-radius:9px;padding:10px 15px;font-weight:750;cursor:pointer;white-space:nowrap}"
-            ".button.primary{background:var(--blue);color:#fff}.button.danger{background:#fff0f1;color:var(--red);"
-            "border:1px solid #ffd6da}.button:disabled{opacity:.45;cursor:not-allowed}.action-grid{display:grid;"
-            "grid-template-columns:repeat(3,1fr);gap:14px}.action-card{min-height:230px;padding:18px;border:1px solid "
-            "var(--line);border-radius:14px;display:flex;flex-direction:column;justify-content:space-between}.action-card h3{"
-            "margin:12px 0 7px}.action-card p{color:var(--muted);font-size:13px;line-height:1.55}.action-card form{"
-            "display:flex;align-items:end;justify-content:space-between;gap:10px}.action-icon{display:grid;place-items:center;"
-            "width:38px;height:38px;border-radius:10px;background:#eaf2ff;color:var(--blue);font-size:22px;font-weight:800}"
-            ".limit{display:flex;flex-direction:column;color:var(--muted);font-size:11px;gap:4px}.limit input{"
-            "width:72px;padding:9px;border:1px solid var(--line);border-radius:8px}.two-col{display:grid;"
-            "grid-template-columns:repeat(2,1fr);gap:14px}.count-card{border:1px solid var(--line);border-radius:13px;"
-            "padding:16px}.count-card h3{margin:0 0 12px;font-size:15px}.count-card ul{list-style:none;margin:0;padding:0}"
-            ".count-card li{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid #edf1f6;"
-            "font-size:13px}.count-card a{display:block;padding:7px 0}.banner{padding:13px 16px;border-radius:11px;"
-            "margin-bottom:14px;font-weight:650}.banner.success{color:#087a55;background:#dff7ed}.banner.error{"
-            "color:#a62d3a;background:#fff0f1}.refreshing{color:var(--blue);display:flex;gap:9px;align-items:center}.spinner{"
-            "width:14px;height:14px;border:2px solid #b9d3f9;border-top-color:var(--blue);border-radius:50%}"
-            ".muted{color:var(--muted)}"
-            ".connection-row,.recipient-setting{display:flex;align-items:center;justify-content:space-between;gap:20px;"
-            "margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:13px;background:#f8fafc}"
-            ".connection-row p,.recipient-setting small{display:block;color:var(--muted);font-size:13px;margin:6px 0 0}"
-            ".recipient-current{font-size:18px;font-weight:750;margin:7px 0}.recipient-setting form{display:flex;"
-            "align-items:end;gap:10px}.recipient-setting label{display:flex;flex-direction:column;gap:5px;color:var(--muted);"
-            "font-size:12px}.recipient-setting input[type=email]{min-width:280px;padding:10px;border:1px solid var(--line);"
-            "border-radius:8px;background:#fff;color:var(--ink)}.connection-row .button{display:inline-block}"
-            "@media(max-width:820px){.metrics,.action-grid{grid-template-columns:1fr 1fr}.hero{flex-direction:column}"
-            ".nav{gap:12px}.switch-row,.connection-row,.recipient-setting{align-items:flex-start}.two-col{grid-template-columns:1fr}}"
-            "@media(max-width:560px){.shell{padding:22px 14px}.topbar-inner{padding:0 14px}.metrics,.action-grid{"
-            "grid-template-columns:1fr}.nav a:nth-child(3){display:none}h1{font-size:31px}.switch-row{flex-direction:column}"
-            ".switch-row form,.switch-row button,.connection-row .button{width:100%}.connection-row,.recipient-setting,"
-            ".recipient-setting form{width:100%;flex-direction:column;align-items:stretch}.recipient-setting input[type=email]{"
-            "min-width:0;width:100%}}"
-            '</style></head><body><nav class="topbar"><div class="topbar-inner">'
-            '<a class="brand" href="/agent" style="color:white">Agenda Agent</a><div class="nav">'
-            '<a href="/agent">控制台</a><a href="/reviews">Reviews</a>'
-            '<a href="/brief/today">今日 Brief</a></div></div></nav>'
-            f'<main class="shell">{content}</main></body></html>'
-        )
+        return console_page(title, content, nav="agent", auto_refresh=auto_refresh)
