@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from recruitment_agent.application.operations import (
     OperationHandlers,
     OperationsControlService,
     RuntimeCapabilities,
+    RuntimeControl,
     RuntimeControlDefaults,
     WorkflowOperationResult,
 )
@@ -35,6 +37,7 @@ from recruitment_agent.persistence.operations import SqlAlchemyOperationsStore
 from recruitment_agent.persistence.session import create_database_engine, create_session_factory
 
 LOGGER = logging.getLogger(__name__)
+_RUNTIME_CONTROL_STARTUP_RETRY_DELAYS = (0.5, 1.0, 2.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,20 +150,34 @@ async def run_operation_dispatch_job() -> int:
             return await service.redispatch_queued()
     except Exception as exc:
         LOGGER.error(
-            "operations_dispatch_unavailable",
+            "operations_dispatch_unavailable:%s",
+            type(exc).__name__,
             extra={"error_type": type(exc).__name__},
         )
         return 0
 
 
+async def _read_scheduled_runtime_control() -> RuntimeControl:
+    """Retry the complete cold-start composition before skipping a schedule."""
+    for delay in (*_RUNTIME_CONTROL_STARTUP_RETRY_DELAYS, None):
+        try:
+            async with operations_control_service() as service:
+                return await service.get_control()
+        except Exception:
+            if delay is None:
+                raise
+            await asyncio.sleep(delay)
+    raise AssertionError("runtime control startup retry loop exhausted")
+
+
 async def run_scheduled_mail_sync_job() -> None:
     try:
-        async with operations_control_service() as service:
-            if not (await service.get_control()).mail_sync_enabled:
-                return
+        if not (await _read_scheduled_runtime_control()).mail_sync_enabled:
+            return
     except Exception as exc:
         LOGGER.error(
-            "mail_sync_runtime_control_unavailable",
+            "mail_sync_runtime_control_unavailable:%s",
+            type(exc).__name__,
             extra={"error_type": type(exc).__name__},
         )
         return
@@ -171,13 +188,13 @@ async def run_scheduled_daily_brief_job() -> None:
     try:
         if not runtime_capabilities().daily_brief_available:
             return
-        async with operations_control_service() as service:
-            control = await service.get_control()
-            if not control.daily_brief_enabled or control.daily_brief_recipient is None:
-                return
+        control = await _read_scheduled_runtime_control()
+        if not control.daily_brief_enabled or control.daily_brief_recipient is None:
+            return
     except Exception as exc:
         LOGGER.error(
-            "daily_brief_runtime_control_unavailable",
+            "daily_brief_runtime_control_unavailable:%s",
+            type(exc).__name__,
             extra={"error_type": type(exc).__name__},
         )
         return
