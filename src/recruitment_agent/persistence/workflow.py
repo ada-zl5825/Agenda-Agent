@@ -1,5 +1,6 @@
 """PostgreSQL persistence for processing runs, validated extraction, and reviews."""
 
+from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from recruitment_agent.graph.contracts import (
     WorkflowExtractionResult,
     WorkflowSourceEmail,
     WorkflowStage,
+    successor_review_id,
 )
 from recruitment_agent.persistence.models import (
     LlmExtractionModel,
@@ -172,31 +174,45 @@ class SqlAlchemyWorkflowPersistence:
                 }
             )
 
-    async def open_review(self, item: ReviewItem) -> None:
+    async def open_review(self, item: ReviewItem) -> ReviewItem:
         async with self._session_factory.begin() as session:
-            statement = insert(ReviewItemModel).values(
-                id=item.id,
-                processing_run_id=item.processing_run_id,
-                review_type=item.request.review_type.value,
-                reason=item.request.reason,
-                question=item.request.question,
-                allowed_choices=list(item.request.allowed_choices),
-                status=item.status.value,
-                version=item.version,
-                created_at=item.created_at,
-            )
-            await session.execute(statement.on_conflict_do_nothing(index_elements=["id"]))
-            stored = await session.get(ReviewItemModel, item.id)
-            if stored is None:
-                raise RuntimeError("review item could not be persisted")
-            if (
-                stored.processing_run_id != item.processing_run_id
-                or stored.review_type != item.request.review_type.value
-                or stored.reason != item.request.reason
-                or stored.question != item.request.question
-                or stored.allowed_choices != list(item.request.allowed_choices)
-            ):
-                raise ValueError("persisted review request does not match workflow request")
+            candidate = item
+            for _ in range(8):
+                stored = await session.get(ReviewItemModel, candidate.id)
+                if stored is None:
+                    await session.execute(
+                        insert(ReviewItemModel).values(
+                            id=candidate.id,
+                            processing_run_id=candidate.processing_run_id,
+                            review_type=candidate.request.review_type.value,
+                            reason=candidate.request.reason,
+                            question=candidate.request.question,
+                            allowed_choices=list(candidate.request.allowed_choices),
+                            status=ReviewStatus.OPEN.value,
+                            version=candidate.version,
+                            created_at=candidate.created_at,
+                        )
+                    )
+                    return candidate
+                if stored.status == ReviewStatus.OPEN.value:
+                    if (
+                        stored.processing_run_id != candidate.processing_run_id
+                        or stored.review_type != candidate.request.review_type.value
+                        or stored.reason != candidate.request.reason
+                        or stored.question != candidate.request.question
+                        or stored.allowed_choices != list(candidate.request.allowed_choices)
+                    ):
+                        raise ValueError(
+                            "persisted review request does not match workflow request"
+                        )
+                    return candidate
+                if stored.status != ReviewStatus.RESOLVED.value:
+                    raise ValueError("persisted review status is not open or resolved")
+                candidate = replace(
+                    item,
+                    id=successor_review_id(stored.id, stored.version),
+                )
+            raise RuntimeError("could not open a successor review")
 
     async def resolve_review(
         self,

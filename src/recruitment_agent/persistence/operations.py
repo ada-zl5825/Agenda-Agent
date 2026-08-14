@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import ColumnElement, func, select, update
+from sqlalchemy import ColumnElement, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -433,7 +433,7 @@ class SqlAlchemyOperationsStore:
                     )
                     .where(
                         SourceEmailModel.account_id == account_id,
-                        ReviewItemModel.status == "pending",
+                        ReviewItemModel.status == "open",
                     )
                 )
                 or 0
@@ -573,6 +573,87 @@ class SqlAlchemyOperationsStore:
                 .limit(limit)
             )
             return tuple(values)
+
+    async def list_orphaned_needs_review_ids(
+        self,
+        *,
+        account_id: UUID,
+        limit: int,
+    ) -> tuple[UUID, ...]:
+        if limit <= 0:
+            return ()
+        open_review = exists(
+            select(ReviewItemModel.id).where(
+                ReviewItemModel.processing_run_id == ProcessingRunModel.id,
+                ReviewItemModel.status == "open",
+            )
+        )
+        async with self._session_factory() as session:
+            values = await session.scalars(
+                select(SourceEmailModel.id)
+                .join(
+                    ProcessingRunModel,
+                    ProcessingRunModel.source_email_id == SourceEmailModel.id,
+                )
+                .where(
+                    SourceEmailModel.account_id == account_id,
+                    SourceEmailModel.processing_status
+                    == SourceEmailProcessingStatus.NEEDS_REVIEW.value,
+                    ProcessingRunModel.status == "needs_review",
+                    ~open_review,
+                )
+                .order_by(SourceEmailModel.received_at)
+                .limit(limit)
+            )
+            return tuple(dict.fromkeys(values))
+
+    async def reclaim_orphaned_needs_review(
+        self,
+        *,
+        account_id: UUID,
+        source_email_id: UUID,
+        now: datetime,
+    ) -> bool:
+        open_review = exists(
+            select(ReviewItemModel.id).where(
+                ReviewItemModel.processing_run_id == ProcessingRunModel.id,
+                ReviewItemModel.status == "open",
+            )
+        )
+        async with self._session_factory.begin() as session:
+            run = await session.scalar(
+                select(ProcessingRunModel)
+                .join(
+                    SourceEmailModel,
+                    SourceEmailModel.id == ProcessingRunModel.source_email_id,
+                )
+                .where(
+                    SourceEmailModel.id == source_email_id,
+                    SourceEmailModel.account_id == account_id,
+                    SourceEmailModel.processing_status
+                    == SourceEmailProcessingStatus.NEEDS_REVIEW.value,
+                    ProcessingRunModel.status == "needs_review",
+                    ~open_review,
+                )
+                .order_by(ProcessingRunModel.started_at.desc())
+                .limit(1)
+            )
+            if run is None:
+                return False
+            run.status = "failed"
+            run.error_code = "ORPHANED_REVIEW"
+            run.finished_at = now
+            await session.execute(
+                update(SourceEmailModel)
+                .where(
+                    SourceEmailModel.id == source_email_id,
+                    SourceEmailModel.account_id == account_id,
+                    SourceEmailModel.processing_status
+                    == SourceEmailProcessingStatus.NEEDS_REVIEW.value,
+                )
+                .values(processing_status=SourceEmailProcessingStatus.PENDING.value)
+            )
+            return True
 
     async def count_child_operations(self, *, parent_operation_id: UUID) -> int:
         async with self._session_factory() as session:

@@ -308,6 +308,21 @@ class OperationsStore(Protocol):
         limit: int,
     ) -> tuple[UUID, ...]: ...
 
+    async def list_orphaned_needs_review_ids(
+        self,
+        *,
+        account_id: UUID,
+        limit: int,
+    ) -> tuple[UUID, ...]: ...
+
+    async def reclaim_orphaned_needs_review(
+        self,
+        *,
+        account_id: UUID,
+        source_email_id: UUID,
+        now: datetime,
+    ) -> bool: ...
+
     async def count_child_operations(self, *, parent_operation_id: UUID) -> int: ...
 
 
@@ -613,6 +628,16 @@ class OperationExecutor:
             parent_operation_id=operation.id
         )
         remaining = max(0, operation.batch_limit - existing)
+        orphans = await self._store.list_orphaned_needs_review_ids(
+            account_id=self._account_id,
+            limit=remaining,
+        )
+        for source_email_id in orphans:
+            await self._store.reclaim_orphaned_needs_review(
+                account_id=self._account_id,
+                source_email_id=source_email_id,
+                now=self._clock.now(),
+            )
         source_ids = await self._store.list_pending_source_email_ids(
             account_id=self._account_id,
             limit=remaining,
