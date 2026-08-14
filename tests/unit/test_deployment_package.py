@@ -178,3 +178,4 @@ def test_database_maintenance_is_a_private_allowlisted_container_apps_job() -> N
     assert "properties.template.containers[?name=='database-maintenance']" in trigger_script
     assert "--image $image" in trigger_script
     assert '--env-vars "DATABASE_URL=secretref:database-url"' in trigger_script
+    assert "rg-agenda-agent-prod-uks" not in trigger_script

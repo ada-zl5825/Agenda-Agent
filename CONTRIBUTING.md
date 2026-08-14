@@ -2,7 +2,8 @@
 
 This repository follows [AGENTS.md](AGENTS.md) and
 [docs/01_FINAL_TECHNICAL_DESIGN.md](docs/01_FINAL_TECHNICAL_DESIGN.md). Read both before changing
-architecture or phase scope.
+architecture or phase scope. Participation is governed by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Development setup
 
@@ -64,3 +65,4 @@ automation, automatic recruiter replies, or attachment ingestion unless asked.
 - Update the matching document in `docs/` when behavior, operations, or privacy boundaries change.
 - Describe why the change exists, not only what files moved.
 - Do not include secrets, production hostnames you do not intend to publish, or raw email content.
+- Security reports go through [SECURITY.md](SECURITY.md), not a public issue.
