@@ -1630,7 +1630,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.1,<2" },
     { name = "respx", specifier = ">=0.22,<1" },
     { name = "ruff", specifier = ">=0.12,<1" },
-    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.12,<5" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.15.0,<5" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]
 
