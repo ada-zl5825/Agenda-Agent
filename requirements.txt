@@ -270,7 +270,7 @@ uuid-utils==0.17.0
     # via
     #   langchain-core
     #   langsmith
-websockets==15.0.1
+websockets==17.0.1
     # via
     #   langgraph-sdk
     #   langsmith
