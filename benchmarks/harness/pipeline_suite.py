@@ -130,6 +130,42 @@ def placeholder_secure_link_rows(
     )
 
 
+async def seed_pipeline_case_rows(
+    session: AsyncSession,
+    *,
+    source_email_id: UUID,
+    case_id: str,
+    sender_domain: str | None,
+    received_at: datetime,
+    link_refs: tuple[str, ...],
+) -> None:
+    """Insert the source email, then placeholder links, honoring the FK order.
+
+    SQLAlchemy may otherwise INSERT ``secure_links`` before ``source_emails``
+    when both are pending in the same flush.
+    """
+    await session.merge(
+        SourceEmailModel(
+            id=source_email_id,
+            account_id=BENCHMARK_ACCOUNT_ID,
+            graph_message_id=f"benchmark-{case_id}",
+            internet_message_id=None,
+            subject=case_id,
+            sender_domain=sender_domain,
+            received_at=received_at,
+            outlook_web_link=None,
+            body_hash=None,
+            has_attachments=False,
+        )
+    )
+    await session.flush()
+    for row in placeholder_secure_link_rows(
+        source_email_id=source_email_id,
+        link_refs=link_refs,
+    ):
+        session.add(row)
+
+
 def sanitized_workflow_failure(exc: BaseException) -> str:
     """Keep the exception type and a URL-free message for benchmark reports."""
     detail = str(exc).strip()
@@ -384,25 +420,14 @@ async def _run_case(
         raise ValueError("pipeline case requires expected_domain")
 
     async with session_factory.begin() as session:
-        await session.merge(
-            SourceEmailModel(
-                id=case.source_email_id,
-                account_id=BENCHMARK_ACCOUNT_ID,
-                graph_message_id=f"benchmark-{case.case_id}",
-                internet_message_id=None,
-                subject=case.case_id,
-                sender_domain=case.input.sender_domain,
-                received_at=case.input.received_at,
-                outlook_web_link=None,
-                body_hash=None,
-                has_attachments=False,
-            )
-        )
-        for row in placeholder_secure_link_rows(
+        await seed_pipeline_case_rows(
+            session,
             source_email_id=case.source_email_id,
+            case_id=case.case_id,
+            sender_domain=case.input.sender_domain,
+            received_at=case.input.received_at,
             link_refs=case.input.allowed_link_refs,
-        ):
-            session.add(row)
+        )
 
     prepared = SafePreparedEmail(
         source_email_id=case.source_email_id,
