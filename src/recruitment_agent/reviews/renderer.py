@@ -321,9 +321,18 @@ class ReviewHtmlRenderer:
                 'placeholder="YYYY-MM-DD HH:MM"></label>'
                 f'<p class="hint">{escape(hint)}</p>'
             )
+        # A second click while the slow resolve request is in flight cancels
+        # the first POST and can strand the workflow, so submit exactly once.
+        submit_once = (
+            "if(this.dataset.busy){return false;}"
+            "this.dataset.busy='1';"
+            "var b=this.querySelector('button[type=submit]');"
+            "if(b){b.disabled=true;b.textContent='正在提交…';}"
+        )
         return (
             f'<p class="question">{escape(detail.question)}</p>'
-            f'<form class="decision-form" method="post" action="/reviews/{detail.id}/resolve">'
+            f'<form class="decision-form" method="post" action="/reviews/{detail.id}/resolve" '
+            f'onsubmit="{submit_once}">'
             f'<input type="hidden" name="csrf_token" '
             f'value="{escape(csrf_token, quote=True)}">'
             f'<input type="hidden" name="expected_version" value="{detail.version}">'
