@@ -1,0 +1,20 @@
+// Human-review pressure: reviews opened by type versus finalized runs.
+// A rising review share means the model or the mail mix is drifting.
+let window = 30d;
+let reviews = traces
+    | where timestamp > ago(window)
+    | where message startswith "RA_METRIC "
+    | extend payload = parse_json(substring(message, 10))
+    | where tostring(payload.metric) == "workflow_review_opened"
+    | summarize reviews_opened = count()
+      by review_type = tostring(payload.dimensions.review_type), day = bin(timestamp, 1d);
+let runs = traces
+    | where timestamp > ago(window)
+    | where message startswith "RA_METRIC "
+    | extend payload = parse_json(substring(message, 10))
+    | where tostring(payload.metric) == "workflow_run_finalized"
+    | summarize runs_finalized = count() by day = bin(timestamp, 1d);
+reviews
+| join kind=fullouter runs on day
+| project day = coalesce(day, day1), review_type, reviews_opened, runs_finalized
+| order by day desc

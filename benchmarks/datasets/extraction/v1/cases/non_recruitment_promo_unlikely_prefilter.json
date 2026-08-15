@@ -1,0 +1,47 @@
+{
+  "case_id": "non_recruitment_promo_unlikely_prefilter",
+  "tags": ["non_recruitment", "zh", "negative", "prefilter_unlikely", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 双周会员特惠\n\n本周末会员商品低至五折, 更多优惠请在应用内查看.",
+    "allowed_link_refs": [],
+    "prefilter_decision": "unlikely"
+  },
+  "recorded_response": {
+    "relevant": false,
+    "company_raw": null,
+    "role_raw": null,
+    "event_type": "unknown",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.0,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": false,
+    "event_type": "unknown",
+    "company_raw": null,
+    "role_raw": null,
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  },
+  "expected_domain": {
+    "outcome": "ignored"
+  }
+}

@@ -44,3 +44,11 @@ def test_visual_console_downgrade_compiles_for_postgresql() -> None:
         "20260814_0011:20260813_0010",
         sql=True,
     )
+
+
+def test_extraction_usage_downgrade_compiles_for_postgresql() -> None:
+    command.downgrade(
+        Config("alembic.ini"),
+        "20260815_0012:20260814_0011",
+        sql=True,
+    )

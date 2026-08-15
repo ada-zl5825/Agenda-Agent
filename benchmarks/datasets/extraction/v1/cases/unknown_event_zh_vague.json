@@ -1,0 +1,43 @@
+{
+  "case_id": "unknown_event_zh_vague",
+  "tags": ["unknown_event", "zh", "needs_review"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 关于您的应聘\n\n沉星文化人才团队就您的应聘进展有新的说明, 具体信息将另行沟通.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "沉星文化",
+    "role_raw": null,
+    "event_type": "unknown",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.94,
+    "event_confidence": 0.7,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "unknown",
+    "company_raw": "沉星文化",
+    "role_raw": null,
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["unknown_event"]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "dataset": "extraction",
+  "version": "v1",
+  "prompt_version": "recruitment-extraction-v2",
+  "case_count": 60,
+  "description": "Synthetic golden corpus for recruitment extraction quality and full-workflow correctness. Chinese and English scenarios covering interviews, assessments, reschedules, offers, rejections, deadlines, action-required mail, results, general updates, ambiguous recruitment mail, and hard non-recruitment negatives. All content is fictional; no real PII or secret-bearing URLs."
+}

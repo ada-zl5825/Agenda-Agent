@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_en_low_event_confidence",
+  "tags": ["interview", "en", "timezone_explicit", "low_confidence", "needs_review"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Next steps\n\nMirabel Consulting would like to arrange a conversation about your Consultant application on 29 August 2026 at 13:00 BST. Details on the format will follow.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Mirabel Consulting",
+    "role_raw": "Consultant",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-29T13:00:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": "29 August 2026 at 13:00 BST",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.95,
+    "event_confidence": 0.55,
+    "datetime_confidence": 0.95
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "Mirabel Consulting",
+    "role_raw": "Consultant",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-29T13:00:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "needs_review",
+    "validation_issues": ["low_confidence"]
+  }
+}

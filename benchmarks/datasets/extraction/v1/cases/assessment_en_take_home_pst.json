@@ -1,0 +1,43 @@
+{
+  "case_id": "assessment_en_take_home_pst",
+  "tags": ["assessment", "en", "timezone_explicit", "winter_tz"],
+  "input": {
+    "received_at": "2026-01-12T08:00:00-05:00",
+    "sanitized_text": "Subject: Take-home assignment\n\nRedwood Signal invites you to submit the Firmware Engineer take-home assignment by 16 January 2026 at 17:00 PST.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Redwood Signal",
+    "role_raw": "Firmware Engineer",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "submit the take-home assignment",
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": "2026-01-16T17:00:00-08:00",
+    "timezone_explicit": true,
+    "timezone_text": "PST",
+    "source_datetime_text": null,
+    "source_deadline_text": "16 January 2026 at 17:00 PST",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.96
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "Redwood Signal",
+    "role_raw": "Firmware Engineer",
+    "action_required": true,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": "2026-01-16T17:00:00-08:00",
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

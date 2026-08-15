@@ -60,6 +60,20 @@ class RecruitmentExtractionRequest:
         )
 
 
+class ExtractionUsage(BaseModel):
+    """Privacy-safe usage telemetry captured at the model boundary.
+
+    Contains only token counts and wall-clock latency; never prompt or
+    completion content.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+    latency_ms: int = Field(ge=0)
+
+
 class ExtractionValidationStatus(StrEnum):
     VALID = "valid"
     NEEDS_REVIEW = "needs_review"

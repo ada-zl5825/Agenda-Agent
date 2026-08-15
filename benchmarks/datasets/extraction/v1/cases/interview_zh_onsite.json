@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_zh_onsite",
+  "tags": ["interview", "zh", "timezone_explicit", "onsite"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 现场面试通知\n\n沧海半导体邀请您参加芯片验证工程师岗位的现场面试, 时间为2026年8月25日 09:30 (北京时间), 地点为上海市徐汇区漕河泾开发区25号楼.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "沧海半导体",
+    "role_raw": "芯片验证工程师",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-25T09:30:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "北京时间",
+    "source_datetime_text": "2026年8月25日 09:30 (北京时间)",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": "上海市徐汇区漕河泾开发区25号楼",
+    "company_confidence": 0.98,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.98
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "沧海半导体",
+    "role_raw": "芯片验证工程师",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-25T09:30:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

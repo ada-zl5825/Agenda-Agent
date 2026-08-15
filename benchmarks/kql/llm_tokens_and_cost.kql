@@ -1,0 +1,17 @@
+// Daily LLM latency, token volume, and estimated cost (last 30 days).
+// Set the two price constants to your deployment's USD price per 1M tokens.
+let input_price_per_1m = 0.0;
+let output_price_per_1m = 0.0;
+traces
+| where timestamp > ago(30d)
+| where message startswith "RA_METRIC "
+| extend payload = parse_json(substring(message, 10))
+| extend metric = tostring(payload.metric), value = todouble(payload.value)
+| where metric in ("llm_prompt_tokens", "llm_completion_tokens", "llm_extraction_latency_ms")
+| summarize total = sum(value), p95 = percentile(value, 95), calls = count()
+  by metric, day = bin(timestamp, 1d)
+| extend estimated_cost_usd = case(
+    metric == "llm_prompt_tokens", total * input_price_per_1m / 1000000.0,
+    metric == "llm_completion_tokens", total * output_price_per_1m / 1000000.0,
+    real(null))
+| order by day desc, metric asc

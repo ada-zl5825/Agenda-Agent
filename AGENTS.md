@@ -97,7 +97,7 @@ Before completion run:
 
 ```text
 uv run ruff check .
-uv run mypy src
+uv run mypy src benchmarks
 uv run pytest
 ```
 

@@ -13,6 +13,7 @@ from recruitment_agent.application.secure_email_processing import (
 )
 from recruitment_agent.extraction.models import RecruitmentExtractionRequest
 from recruitment_agent.extraction.prompt import RECRUITMENT_EXTRACTION_PROMPT_VERSION
+from recruitment_agent.extraction.usage import consume_extraction_usage
 from recruitment_agent.graph.contracts import (
     CompanyResolutionEvidence,
     RoleResolutionEvidence,
@@ -71,6 +72,7 @@ class SecureRecruitmentWorkflowActivities:
             prompt_version=RECRUITMENT_EXTRACTION_PROMPT_VERSION,
         )
         extraction = await self._extraction_service.extract_request(request)
+        usage = consume_extraction_usage()
         resolved = await self._entity_resolution_service.resolve_extraction(
             extraction,
             source_email_id=prepared.source_email_id,
@@ -82,6 +84,7 @@ class SecureRecruitmentWorkflowActivities:
             extraction=resolved.extraction.extraction,
             validation=resolved.extraction.validation,
             prompt_version=resolved.extraction.prompt_version,
+            usage=usage,
             company=None
             if company is None
             else CompanyResolutionEvidence(

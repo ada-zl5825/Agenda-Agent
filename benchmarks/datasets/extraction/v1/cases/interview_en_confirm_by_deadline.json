@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_en_confirm_by_deadline",
+  "tags": ["interview", "en", "timezone_explicit", "action_link", "deadline_and_datetime"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Interview confirmation required\n\nArclight Robotics has reserved an interview slot for Controls Engineer on 1 September 2026 at 10:00 BST. Confirm your attendance via ACTION_LINK_01 by 27 August 2026 at 18:00 BST.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Arclight Robotics",
+    "role_raw": "Controls Engineer",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "confirm your attendance",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-09-01T10:00:00+01:00",
+    "deadline": "2026-08-27T18:00:00+01:00",
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": "1 September 2026 at 10:00 BST",
+    "source_deadline_text": "27 August 2026 at 18:00 BST",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.97
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "Arclight Robotics",
+    "role_raw": "Controls Engineer",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-09-01T10:00:00+01:00",
+    "deadline": "2026-08-27T18:00:00+01:00",
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

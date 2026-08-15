@@ -1,0 +1,48 @@
+{
+  "case_id": "reschedule_en_bst",
+  "tags": ["reschedule", "en", "timezone_explicit", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Interview rescheduled\n\nAdventure Works moved your second interview for Backend Developer to 24 August 2026 at 11:30 BST.",
+    "allowed_link_refs": [],
+    "sender_domain": "adventureworks.example"
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Adventure Works",
+    "role_raw": "Backend Developer",
+    "event_type": "interview_reschedule",
+    "interview_round": "second interview",
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-24T11:30:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": "24 August 2026 at 11:30 BST",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.99
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview_reschedule",
+    "company_raw": "Adventure Works",
+    "role_raw": "Backend Developer",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-24T11:30:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  },
+  "expected_domain": {
+    "outcome": "needs_review",
+    "review_type": "UNCERTAIN_RESCHEDULE"
+  }
+}

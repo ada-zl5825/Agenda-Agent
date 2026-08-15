@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from recruitment_agent.domain.time import require_aware
 from recruitment_agent.extraction.models import (
+    ExtractionUsage,
     ExtractionValidationResult,
     RecruitmentExtraction,
 )
@@ -125,6 +126,7 @@ class WorkflowExtractionResult(BaseModel):
     company: CompanyResolutionEvidence | None = Field(repr=False)
     role: RoleResolutionEvidence | None = Field(repr=False)
     company_resolution_audit_id: UUID | None
+    usage: ExtractionUsage | None = None
 
 class ReviewRequest(BaseModel):
     """Safe and deterministic question surfaced by a LangGraph interrupt."""

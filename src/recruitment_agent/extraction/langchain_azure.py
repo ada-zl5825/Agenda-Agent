@@ -1,19 +1,23 @@
 """LangChain Azure OpenAI adapter for strict Phase 4 structured output."""
 
 from collections.abc import Awaitable, Callable
+from time import perf_counter
 from typing import Protocol, cast
 from urllib.parse import urlsplit
 
 from azure.identity.aio import DefaultAzureCredential
+from langchain_core.callbacks import get_usage_metadata_callback
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from recruitment_agent.application.errors import ExtractionInvocationError
 from recruitment_agent.config.settings import AzureOpenAISettings
 from recruitment_agent.extraction.models import (
+    ExtractionUsage,
     RecruitmentExtraction,
     RecruitmentExtractionRequest,
 )
 from recruitment_agent.extraction.prompt import RECRUITMENT_EXTRACTION_PROMPT_V2
+from recruitment_agent.extraction.usage import record_extraction_usage
 
 _AZURE_OPENAI_CLASSIC_SCOPE = "https://cognitiveservices.azure.com/.default"
 _FOUNDRY_SCOPE = "https://ai.azure.com/.default"
@@ -29,6 +33,22 @@ class StructuredExtractionRunnable(Protocol):
     """Small async boundary implemented by a composed LangChain runnable."""
 
     def ainvoke(self, value: dict[str, object]) -> Awaitable[object]: ...
+
+
+def sum_usage_tokens(metadata: object, field: str) -> int | None:
+    """Sum a LangChain usage field without assuming provider key shapes."""
+    if not isinstance(metadata, dict) or not metadata:
+        return None
+    total = 0
+    saw_value = False
+    for entry in metadata.values():
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get(field)
+        if isinstance(value, int) and value >= 0:
+            total += value
+            saw_value = True
+    return total if saw_value else None
 
 
 def _uses_foundry_v1(endpoint: str) -> bool:
@@ -92,13 +112,30 @@ class LangChainRecruitmentExtractionModel:
             "allowed_link_refs": list(request.allowed_link_refs),
             "sanitized_text": request.sanitized_text,
         }
+        record_extraction_usage(None)
+        started = perf_counter()
         try:
-            result = await self._runnable.ainvoke(values)
-            if isinstance(result, RecruitmentExtraction):
-                return result
-            return RecruitmentExtraction.model_validate(result)
+            with get_usage_metadata_callback() as usage_callback:
+                result = await self._runnable.ainvoke(values)
+            extraction = (
+                result
+                if isinstance(result, RecruitmentExtraction)
+                else RecruitmentExtraction.model_validate(result)
+            )
         except Exception:
             raise ExtractionInvocationError("structured extraction failed") from None
+        latency_ms = int((perf_counter() - started) * 1000)
+        record_extraction_usage(
+            ExtractionUsage(
+                prompt_tokens=sum_usage_tokens(usage_callback.usage_metadata, "input_tokens"),
+                completion_tokens=sum_usage_tokens(
+                    usage_callback.usage_metadata,
+                    "output_tokens",
+                ),
+                latency_ms=latency_ms,
+            )
+        )
+        return extraction
 
     async def aclose(self) -> None:
         """Release the Azure Identity transport when this adapter owns it."""

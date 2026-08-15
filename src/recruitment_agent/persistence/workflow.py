@@ -140,6 +140,7 @@ class SqlAlchemyWorkflowPersistence:
     ) -> WorkflowExtractionResult:
         result = audit.result
         values = result.model_dump(mode="json")
+        usage = result.usage
         async with self._session_factory.begin() as session:
             statement = insert(LlmExtractionModel).values(
                 id=audit.id,
@@ -150,6 +151,9 @@ class SqlAlchemyWorkflowPersistence:
                 company_resolution=values["company"],
                 role_resolution=values["role"],
                 prompt_version=result.prompt_version,
+                prompt_tokens=None if usage is None else usage.prompt_tokens,
+                completion_tokens=None if usage is None else usage.completion_tokens,
+                latency_ms=None if usage is None else usage.latency_ms,
                 company_resolution_audit_id=result.company_resolution_audit_id,
                 created_at=audit.created_at,
             )
@@ -171,6 +175,13 @@ class SqlAlchemyWorkflowPersistence:
                     "company": stored.company_resolution,
                     "role": stored.role_resolution,
                     "company_resolution_audit_id": stored.company_resolution_audit_id,
+                    "usage": None
+                    if stored.latency_ms is None
+                    else {
+                        "prompt_tokens": stored.prompt_tokens,
+                        "completion_tokens": stored.completion_tokens,
+                        "latency_ms": stored.latency_ms,
+                    },
                 }
             )
 

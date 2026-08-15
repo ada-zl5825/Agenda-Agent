@@ -1,0 +1,106 @@
+name: benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: "Also run the live Azure OpenAI extraction eval (spends tokens)"
+        type: boolean
+        default: false
+  schedule:
+    # Weekly: offline gates plus one live model evaluation (Monday 05:00 UTC).
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install locked dependencies
+        run: uv sync --all-groups --locked
+
+      - name: Replay extraction benchmark (gate)
+        run: uv run python -m benchmarks.cli run extraction --mode replay
+
+      - name: Pipeline correctness benchmark (gate)
+        run: uv run python -m benchmarks.cli run pipeline
+
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-offline-reports
+          path: benchmarks/results/
+          if-no-files-found: ignore
+
+  live:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      LLM_ENABLED: "true"
+      AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+      AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '2024-10-21' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install locked dependencies
+        run: uv sync --all-groups --locked
+
+      - name: Live extraction benchmark (gate)
+        run: >-
+          uv run python -m benchmarks.cli run extraction
+          --mode live --concurrency 2
+
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-live-reports
+          path: benchmarks/results/
+          if-no-files-found: ignore

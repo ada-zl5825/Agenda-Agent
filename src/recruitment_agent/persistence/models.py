@@ -403,6 +403,9 @@ class LlmExtractionModel(Base):
     company_resolution: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     role_resolution: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
     company_resolution_audit_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("app.company_resolution_attempts.id", ondelete="SET NULL"),

@@ -28,3 +28,6 @@ Thumbs.db
 # Build artifacts
 build/
 dist/
+
+# Benchmark run artifacts (baselines are committed, results are not)
+benchmarks/results/

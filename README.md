@@ -41,7 +41,7 @@ Recruitment Inbox Agent
 
 ## 当前范围
 
-技术设计中的 Phase 0–9A 已落地。Alembic head 为 `20260814_0011`。
+技术设计中的 Phase 0–9A 已落地。Alembic head 为 `20260815_0012`。
 
 | 界面 | 路径 | 说明 |
 | --- | --- | --- |
@@ -81,6 +81,7 @@ flowchart LR
 | [运维](docs/05_OPERATIONS.md) | 配置、迁移、Azure 部署 |
 | [测试](docs/06_TEST_PLAN.md) | 自动化覆盖范围 |
 | [开源清单](docs/07_OPEN_SOURCE.md) | 公开仓库前要处理的事项 |
+| [Benchmark](docs/08_BENCHMARKS.md) | 黄金数据集、模型评测、流水线基准、生产遥测与回归门禁 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 本地开发与 PR |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 参与准则 |
 | [SECURITY.md](SECURITY.md) | 漏洞报告与安全边界 |
@@ -113,7 +114,7 @@ python -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32)
 
 ```powershell
 uv run ruff check .
-uv run mypy src
+uv run mypy src benchmarks
 uv run pytest
 ```
 
@@ -122,6 +123,16 @@ Docker 可用时再跑 PostgreSQL 集成测试：
 ```powershell
 $env:RUN_POSTGRES_INTEGRATION="1"
 uv run pytest -m integration
+```
+
+## Benchmark
+
+工程化 benchmark 体系：黄金数据集、真实模型评测（replay 免费 / live 计费）、全链路正确性基准与生产遥测。详见 [docs/08_BENCHMARKS.md](docs/08_BENCHMARKS.md)。
+
+```powershell
+uv run python -m benchmarks.cli run extraction --mode replay
+uv run python -m benchmarks.cli run pipeline    # 需要 Docker
+uv run python -m benchmarks.cli run extraction --mode live  # 调用真实 Azure OpenAI
 ```
 
 ## 生产部署

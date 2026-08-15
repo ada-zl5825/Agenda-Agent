@@ -47,6 +47,7 @@ from recruitment_agent.microsoft.auth import MicrosoftAuthorizationService
 from recruitment_agent.microsoft.calendar import GraphCalendarClient
 from recruitment_agent.microsoft.crypto import AesGcmCipher
 from recruitment_agent.microsoft.graph import GraphMailClient
+from recruitment_agent.observability.workflow import MetricsWorkflowPersistence
 from recruitment_agent.persistence.calendar import SqlAlchemyCalendarSyncStore
 from recruitment_agent.persistence.companies import SqlAlchemyCompanyRepository
 from recruitment_agent.persistence.company_resolutions import (
@@ -176,7 +177,9 @@ async def _production_workflow_runner(
                         ),
                     ),
                 )
-                persistence = SqlAlchemyWorkflowPersistence(session_factory)
+                persistence = MetricsWorkflowPersistence(
+                    SqlAlchemyWorkflowPersistence(session_factory)
+                )
                 context = RecruitmentGraphContext(
                     activities=activities,
                     domain=RecruitmentDomainService(

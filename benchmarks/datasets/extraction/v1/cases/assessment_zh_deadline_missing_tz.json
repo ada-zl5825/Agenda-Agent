@@ -1,0 +1,47 @@
+{
+  "case_id": "assessment_zh_deadline_missing_tz",
+  "tags": ["assessment", "zh", "timezone_missing", "action_link", "needs_review", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 笔试提醒\n\n青梧网络提醒您完成前端开发工程师岗位的笔试, 截止时间为8月20日 23:59, 请通过 ACTION_LINK_01 作答.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "青梧网络",
+    "role_raw": "前端开发工程师",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "完成笔试",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-20T23:59:00+00:00",
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": "8月20日 23:59",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.97,
+    "datetime_confidence": 0.8
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "青梧网络",
+    "role_raw": "前端开发工程师",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-20T23:59:00+00:00",
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["timezone_ambiguous"]
+  },
+  "expected_domain": {
+    "outcome": "needs_review",
+    "review_type": "TIMEZONE_AMBIGUITY"
+  }
+}

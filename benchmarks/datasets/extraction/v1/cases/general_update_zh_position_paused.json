@@ -1,0 +1,43 @@
+{
+  "case_id": "general_update_zh_position_paused",
+  "tags": ["general_update", "zh"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 招聘进展说明\n\n感谢您对临海机器人的关注, 运动控制工程师岗位的招聘流程暂缓, 恢复后我们会第一时间联系您.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "临海机器人",
+    "role_raw": "运动控制工程师",
+    "event_type": "general_update",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.93,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "general_update",
+    "company_raw": "临海机器人",
+    "role_raw": "运动控制工程师",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

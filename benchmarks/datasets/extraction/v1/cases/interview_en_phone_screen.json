@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_en_phone_screen",
+  "tags": ["interview", "en", "timezone_explicit", "phone_screen"],
+  "input": {
+    "received_at": "2026-01-12T09:00:00+00:00",
+    "sanitized_text": "Subject: Recruiter phone screen\n\nCobalt Grid Energy invites you to a phone screen for Energy Markets Analyst on 20 January 2026 at 11:00 GMT. Your recruiter will call you.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Cobalt Grid Energy",
+    "role_raw": "Energy Markets Analyst",
+    "event_type": "interview",
+    "interview_round": "phone screen",
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-01-20T11:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "GMT",
+    "source_datetime_text": "20 January 2026 at 11:00 GMT",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.9,
+    "datetime_confidence": 0.97
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "Cobalt Grid Energy",
+    "role_raw": "Energy Markets Analyst",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-01-20T11:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "case_id": "rejection_en_simple",
+  "tags": ["rejection", "en", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Application update\n\nWide World Importers will not progress your application for Cloud Engineer.",
+    "allowed_link_refs": [],
+    "sender_domain": "wideworld.example"
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Wide World Importers",
+    "role_raw": "Cloud Engineer",
+    "event_type": "rejection",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "rejection",
+    "company_raw": "Wide World Importers",
+    "role_raw": "Cloud Engineer",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  },
+  "expected_domain": {
+    "outcome": "completed",
+    "application_status": "rejected",
+    "event": {
+      "type": "rejection",
+      "starts_at": null,
+      "deadline_at": null,
+      "timezone": null
+    },
+    "action_item_count": 0
+  }
+}

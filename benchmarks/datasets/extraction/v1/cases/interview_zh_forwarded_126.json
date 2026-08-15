@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_zh_forwarded_126",
+  "tags": ["interview", "zh", "timezone_explicit", "forwarded_126", "action_link"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: Fw: 面试邀请\n\n-------- 转发邮件 --------\n发件人: 洛桥出行招聘组\n\n洛桥出行邀请您参加客户端开发工程师岗位的二面, 时间为2026年8月26日 16:30 (北京时间), 平台为飞书会议, 请通过 ACTION_LINK_01 确认出席.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "洛桥出行",
+    "role_raw": "客户端开发工程师",
+    "event_type": "interview",
+    "interview_round": "二面",
+    "action_required": true,
+    "action_text": "通过链接确认出席二面",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-08-26T16:30:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "北京时间",
+    "source_datetime_text": "2026年8月26日 16:30 (北京时间)",
+    "source_deadline_text": null,
+    "meeting_platform": "飞书会议",
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.97,
+    "datetime_confidence": 0.97
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "洛桥出行",
+    "role_raw": "客户端开发工程师",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-08-26T16:30:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

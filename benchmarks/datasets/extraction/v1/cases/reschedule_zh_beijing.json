@@ -1,0 +1,43 @@
+{
+  "case_id": "reschedule_zh_beijing",
+  "tags": ["reschedule", "zh", "timezone_explicit"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 面试改期通知\n\n山雾智行将您的算法实习生一面调整至2026年8月27日 15:00 (北京时间), 其他安排不变.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "山雾智行",
+    "role_raw": "算法实习生",
+    "event_type": "interview_reschedule",
+    "interview_round": "一面",
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-27T15:00:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "北京时间",
+    "source_datetime_text": "2026年8月27日 15:00 (北京时间)",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.98
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview_reschedule",
+    "company_raw": "山雾智行",
+    "role_raw": "算法实习生",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-27T15:00:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}
