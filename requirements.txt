@@ -221,7 +221,7 @@ sqlalchemy==2.0.52
     #   recruitment-inbox-agent
 starlette==1.6.0
     # via fastapi
-structlog==25.5.0
+structlog==26.1.0
     # via recruitment-inbox-agent
 tenacity==9.1.4
     # via langchain-core
