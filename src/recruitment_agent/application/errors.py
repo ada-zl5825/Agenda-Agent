@@ -66,6 +66,15 @@ class ExtractionInputError(ApplicationError):
 class ExtractionInvocationError(ApplicationError):
     code = "EXTRACTION_INVOCATION_FAILED"
 
+    def __init__(
+        self,
+        message: str = "structured extraction failed",
+        *,
+        provider_failure: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider_failure = provider_failure
+
 
 class TimeEvidenceUnresolvedError(ApplicationError):
     """Time evidence exists but stayed unusable after review; fail visibly."""

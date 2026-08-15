@@ -20,9 +20,11 @@ after 30 seconds, and the three-attempt budget includes the initial request.
 The Function App authenticates with its user-assigned managed identity through
 `DefaultAzureCredential`; do not configure `AZURE_OPENAI_API_KEY`. Grant that identity
 `Cognitive Services User` on a Foundry resource or `Cognitive Services OpenAI User` on a classic
-Azure OpenAI resource before enabling processing. Foundry v1 tokens use the
-`https://ai.azure.com/.default` scope. Keep the model deployment name in configuration rather than
-source code.
+Azure OpenAI resource before enabling processing. Token audience follows the host:
+`*.openai.azure.com` and `*.cognitiveservices.azure.com` use
+`https://cognitiveservices.azure.com/.default`, including when the request path is `/openai/v1`.
+Other Foundry v1 hosts use `https://ai.azure.com/.default`. Keep the model deployment name in
+configuration rather than source code.
 
 Phase 4.5 adds migration `20260813_0005` for append-only company-resolution attempts and ambiguous
 candidate evidence. Apply it before enabling Phase 4.5 processing, then run `seed-companies`.
