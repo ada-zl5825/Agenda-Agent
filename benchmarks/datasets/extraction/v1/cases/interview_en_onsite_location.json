@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_en_onsite_location",
+  "tags": ["interview", "en", "timezone_explicit", "onsite"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Onsite interview\n\nBluecrest Marine invites you to an onsite interview for Marine Systems Engineer on 27 August 2026 at 11:00 BST at 12 Harbour Street, London.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Bluecrest Marine",
+    "role_raw": "Marine Systems Engineer",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-27T11:00:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": "27 August 2026 at 11:00 BST",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": "12 Harbour Street, London",
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.98
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "Bluecrest Marine",
+    "role_raw": "Marine Systems Engineer",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-27T11:00:00+01:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

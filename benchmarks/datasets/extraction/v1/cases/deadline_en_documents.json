@@ -1,0 +1,55 @@
+{
+  "case_id": "deadline_en_documents",
+  "tags": ["deadline", "en", "timezone_explicit", "action_link", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Document deadline\n\nHarbor Analytics requires your right-to-work documents for the Research Analyst application. Upload them via ACTION_LINK_01 by 25 August 2026 at 17:00 BST.",
+    "allowed_link_refs": ["ACTION_LINK_01"],
+    "sender_domain": "harboranalytics.example"
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Harbor Analytics",
+    "role_raw": "Research Analyst",
+    "event_type": "deadline",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "upload right-to-work documents",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-25T17:00:00+01:00",
+    "timezone_explicit": true,
+    "timezone_text": "BST",
+    "source_datetime_text": null,
+    "source_deadline_text": "25 August 2026 at 17:00 BST",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.95,
+    "datetime_confidence": 0.97
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "deadline",
+    "company_raw": "Harbor Analytics",
+    "role_raw": "Research Analyst",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-25T17:00:00+01:00",
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  },
+  "expected_domain": {
+    "outcome": "completed",
+    "application_status": "unknown",
+    "event": {
+      "type": "deadline",
+      "starts_at": null,
+      "deadline_at": "2026-08-25T17:00:00+01:00",
+      "timezone": "BST"
+    },
+    "action_item_count": 1
+  }
+}

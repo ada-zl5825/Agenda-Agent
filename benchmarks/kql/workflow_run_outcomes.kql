@@ -1,0 +1,19 @@
+// Daily workflow outcomes and end-to-end run duration (last 30 days).
+// workflow_run_duration_ms is emitted only for runs started and finished in
+// one process; interrupted-and-resumed runs appear in outcomes only.
+traces
+| where timestamp > ago(30d)
+| where message startswith "RA_METRIC "
+| extend payload = parse_json(substring(message, 10))
+| where tostring(payload.metric) == "workflow_run_finalized"
+| extend status = tostring(payload.dimensions.status)
+| summarize runs = count() by status, day = bin(timestamp, 1d)
+| order by day desc, status asc
+// Run duration percentiles:
+// traces
+// | where message startswith "RA_METRIC "
+// | extend payload = parse_json(substring(message, 10))
+// | where tostring(payload.metric) == "workflow_run_duration_ms"
+// | summarize p50 = percentile(todouble(payload.value), 50),
+//             p95 = percentile(todouble(payload.value), 95)
+//   by status = tostring(payload.dimensions.status), day = bin(timestamp, 1d)

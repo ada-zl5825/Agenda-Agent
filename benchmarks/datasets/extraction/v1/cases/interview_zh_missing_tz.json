@@ -1,0 +1,47 @@
+{
+  "case_id": "interview_zh_missing_tz",
+  "tags": ["interview", "zh", "timezone_missing", "needs_review", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 面试安排\n\n澈明智能邀请您参加算法工程师岗位面试, 时间为8月24日 上午10:00, 请准时参加.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "澈明智能",
+    "role_raw": "算法工程师",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-24T10:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": "8月24日 上午10:00",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.97,
+    "datetime_confidence": 0.8
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "澈明智能",
+    "role_raw": "算法工程师",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-24T10:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["timezone_ambiguous"]
+  },
+  "expected_domain": {
+    "outcome": "needs_review",
+    "review_type": "TIMEZONE_AMBIGUITY"
+  }
+}

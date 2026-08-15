@@ -1,0 +1,43 @@
+{
+  "case_id": "assessment_en_duration_window",
+  "tags": ["assessment", "en", "no_time_evidence", "action_link", "duration_window"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Take-home exercise\n\nOakfield Systems invites you to the Data Engineer take-home exercise. You will have a 72-hour window once you begin via ACTION_LINK_01.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Oakfield Systems",
+    "role_raw": "Data Engineer",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "begin the take-home exercise",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.97,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "Oakfield Systems",
+    "role_raw": "Data Engineer",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

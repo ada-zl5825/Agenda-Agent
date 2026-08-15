@@ -1,0 +1,43 @@
+{
+  "case_id": "assessment_zh_niuke_platform",
+  "tags": ["assessment", "zh", "timezone_explicit", "action_link", "platform"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 在线笔试邀请\n\n松果视界邀请您参加测试开发工程师岗位的在线笔试, 平台为牛客网, 请在2026年8月22日 12:00 (北京时间)前通过 ACTION_LINK_01 完成.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "松果视界",
+    "role_raw": "测试开发工程师",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "完成在线笔试",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-22T12:00:00+08:00",
+    "timezone_explicit": true,
+    "timezone_text": "北京时间",
+    "source_datetime_text": null,
+    "source_deadline_text": "2026年8月22日 12:00 (北京时间)",
+    "meeting_platform": "牛客网",
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.98
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "松果视界",
+    "role_raw": "测试开发工程师",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-22T12:00:00+08:00",
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

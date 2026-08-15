@@ -58,6 +58,7 @@ packages = ["src/recruitment_agent"]
 addopts = "-ra --strict-config --strict-markers"
 asyncio_mode = "strict"
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
   "integration: requires an external service such as PostgreSQL",
 ]
@@ -86,13 +87,16 @@ select = [
   "UP",
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["benchmarks", "recruitment_agent"]
+
 [tool.ruff.lint.per-file-ignores]
 "alembic/versions/*.py" = ["N999"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src"]
+files = ["src", "benchmarks"]
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 

@@ -1,0 +1,15 @@
+// Cold-start visibility for the Flex Consumption Function App (last 7 days).
+// Host startups mark new workers; request latency is compared around them.
+traces
+| where timestamp > ago(7d)
+| where message has "Job host started" or message has "Host started"
+| project host_started_at = timestamp, cloud_RoleInstance
+| order by host_started_at desc
+// HTTP and timer latency percentiles for the same window:
+// requests
+// | where timestamp > ago(7d)
+// | summarize p50_ms = percentile(duration, 50),
+//             p95_ms = percentile(duration, 95),
+//             invocations = count()
+//   by name
+// | order by p95_ms desc

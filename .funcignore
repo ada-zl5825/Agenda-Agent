@@ -7,6 +7,7 @@
 .mypy_cache/
 .ruff_cache/
 alembic.ini
+benchmarks/
 docs/
 infra/
 scripts/

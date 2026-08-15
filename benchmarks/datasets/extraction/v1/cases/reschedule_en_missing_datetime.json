@@ -1,0 +1,43 @@
+{
+  "case_id": "reschedule_en_missing_datetime",
+  "tags": ["reschedule", "en", "missing_datetime", "needs_review"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Interview change\n\nQuayside Media needs to reschedule your interview for Content Strategist. A new time will be shared soon.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Quayside Media",
+    "role_raw": "Content Strategist",
+    "event_type": "interview_reschedule",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.9,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview_reschedule",
+    "company_raw": "Quayside Media",
+    "role_raw": "Content Strategist",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["reschedule_datetime_missing"]
+  }
+}

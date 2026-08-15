@@ -11,6 +11,7 @@ repos:
     hooks:
       - id: mypy
         args: [src]
+        exclude: ^(tests|benchmarks)/
         additional_dependencies:
           - pydantic>=2.11,<3
           - pydantic-settings>=2.10,<3

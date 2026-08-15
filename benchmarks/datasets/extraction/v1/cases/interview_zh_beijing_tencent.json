@@ -1,0 +1,55 @@
+{
+  "case_id": "interview_zh_beijing_tencent",
+  "tags": ["interview", "zh", "timezone_explicit", "action_link", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 星澜科技面试邀请\n\n星澜科技诚邀您参加后端开发工程师岗位的一面, 时间为2026年8月21日 14:00 (北京时间), 会议平台为腾讯会议, 请通过 ACTION_LINK_01 入会.",
+    "allowed_link_refs": ["ACTION_LINK_01"],
+    "sender_domain": "xinglan.example"
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "星澜科技",
+    "role_raw": "后端开发工程师",
+    "event_type": "interview",
+    "interview_round": "一面",
+    "action_required": true,
+    "action_text": "通过会议链接参加一面",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-08-21T14:00:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "timezone_text": "北京时间",
+    "source_datetime_text": "2026年8月21日 14:00 (北京时间)",
+    "source_deadline_text": null,
+    "meeting_platform": "腾讯会议",
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.98
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "星澜科技",
+    "role_raw": "后端开发工程师",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": "2026-08-21T14:00:00+08:00",
+    "deadline": null,
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  },
+  "expected_domain": {
+    "outcome": "completed",
+    "application_status": "interview_scheduled",
+    "event": {
+      "type": "interview",
+      "starts_at": "2026-08-21T14:00:00+08:00",
+      "deadline_at": null,
+      "timezone": "北京时间"
+    },
+    "action_item_count": 1
+  }
+}

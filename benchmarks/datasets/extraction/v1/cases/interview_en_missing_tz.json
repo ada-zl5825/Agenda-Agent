@@ -1,0 +1,47 @@
+{
+  "case_id": "interview_en_missing_tz",
+  "tags": ["interview", "en", "timezone_missing", "needs_review", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Interview invitation\n\nContoso invites you to interview for Data Analyst on 20 August 2026 at 14:00.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Contoso",
+    "role_raw": "Data Analyst",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-20T14:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": "20 August 2026 at 14:00",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.85
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "Contoso",
+    "role_raw": "Data Analyst",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-20T14:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["timezone_ambiguous"]
+  },
+  "expected_domain": {
+    "outcome": "needs_review",
+    "review_type": "TIMEZONE_AMBIGUITY"
+  }
+}

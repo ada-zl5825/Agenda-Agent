@@ -12,6 +12,7 @@ constraints live in [AGENTS.md](../AGENTS.md).
 | [05_OPERATIONS.md](05_OPERATIONS.md) | Operators | Settings, Alembic, Azure, timers, console, runbook. |
 | [06_TEST_PLAN.md](06_TEST_PLAN.md) | Contributors | What the automated suite must keep covering. |
 | [07_OPEN_SOURCE.md](07_OPEN_SOURCE.md) | Maintainers | Checklist before making the repository public. |
+| [08_BENCHMARKS.md](08_BENCHMARKS.md) | Engineering | Golden dataset, extraction eval, pipeline benchmark, telemetry, gates. |
 
 Related project files:
 
@@ -23,4 +24,4 @@ Related project files:
 | [../.env.example](../.env.example) | All application settings. Never commit a real `.env`. |
 | [../infra/main.bicep](../infra/main.bicep) | Production Azure topology. |
 
-Alembic head is `20260814_0011`. Apply every schema change with `uv run alembic upgrade head`.
+Alembic head is `20260815_0012`. Apply every schema change with `uv run alembic upgrade head`.

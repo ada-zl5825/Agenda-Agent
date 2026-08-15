@@ -1,0 +1,43 @@
+{
+  "case_id": "assessment_en_utc_explicit",
+  "tags": ["assessment", "en", "timezone_explicit", "utc"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Online test\n\nPolar Loom invites you to finish the Cloud Engineer online test by 21 August 2026 at 17:00 UTC.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Polar Loom",
+    "role_raw": "Cloud Engineer",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "finish the online test",
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": "2026-08-21T17:00:00+00:00",
+    "timezone_explicit": true,
+    "timezone_text": "UTC",
+    "source_datetime_text": null,
+    "source_deadline_text": "21 August 2026 at 17:00 UTC",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.97
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "Polar Loom",
+    "role_raw": "Cloud Engineer",
+    "action_required": true,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": "2026-08-21T17:00:00+00:00",
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

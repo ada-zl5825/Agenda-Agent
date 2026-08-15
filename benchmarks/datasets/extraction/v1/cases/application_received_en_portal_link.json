@@ -1,0 +1,43 @@
+{
+  "case_id": "application_received_en_portal_link",
+  "tags": ["application_received", "en", "optional_link"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Application received\n\nIronvale Mining has received your application for Graduate Geologist. You can track its progress at any time via ACTION_LINK_01.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Ironvale Mining",
+    "role_raw": "Graduate Geologist",
+    "event_type": "application_received",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "application_received",
+    "company_raw": "Ironvale Mining",
+    "role_raw": "Graduate Geologist",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

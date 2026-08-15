@@ -1,0 +1,43 @@
+{
+  "case_id": "result_zh_passed_interview",
+  "tags": ["result", "zh"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 一面结果\n\n祝贺您通过了南屿证券量化研究员岗位的一面, 后续安排请留意邮件.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "南屿证券",
+    "role_raw": "量化研究员",
+    "event_type": "result",
+    "interview_round": "一面",
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.9,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "result",
+    "company_raw": "南屿证券",
+    "role_raw": "量化研究员",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

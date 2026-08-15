@@ -1,0 +1,44 @@
+{
+  "case_id": "non_recruitment_github_notification",
+  "tags": ["non_recruitment", "en", "negative"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Review requested on pull request 482\n\nA teammate requested your review on pull request 482 in the data-pipeline repository. Two checks are failing.",
+    "allowed_link_refs": [],
+    "prefilter_decision": "unknown"
+  },
+  "recorded_response": {
+    "relevant": false,
+    "company_raw": null,
+    "role_raw": null,
+    "event_type": "unknown",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.0,
+    "event_confidence": 0.97,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": false,
+    "event_type": "unknown",
+    "company_raw": null,
+    "role_raw": null,
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

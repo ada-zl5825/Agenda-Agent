@@ -1,0 +1,47 @@
+{
+  "case_id": "assessment_en_deadline_unresolved",
+  "tags": ["assessment", "en", "deadline_unresolved", "timezone_missing", "needs_review", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Assessment window\n\nJunction Peak invites you to complete the Machine Learning Engineer assessment by the end of next week via ACTION_LINK_01.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Junction Peak",
+    "role_raw": "Machine Learning Engineer",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "complete the assessment",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": "by the end of next week",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.96,
+    "datetime_confidence": 0.7
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "Junction Peak",
+    "role_raw": "Machine Learning Engineer",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["deadline_unresolved", "timezone_ambiguous"]
+  },
+  "expected_domain": {
+    "outcome": "needs_review",
+    "review_type": "TIMEZONE_AMBIGUITY"
+  }
+}

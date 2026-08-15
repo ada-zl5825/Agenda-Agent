@@ -1,0 +1,43 @@
+{
+  "case_id": "general_update_en_pipeline_intro",
+  "tags": ["general_update", "en"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Your candidacy at Windmere Logistics\n\nHello from Windmere Logistics. Your application for Supply Chain Analyst has entered our review pipeline; we aim to reply within two weeks.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Windmere Logistics",
+    "role_raw": "Supply Chain Analyst",
+    "event_type": "general_update",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.9,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "general_update",
+    "company_raw": "Windmere Logistics",
+    "role_raw": "Supply Chain Analyst",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

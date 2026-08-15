@@ -1,0 +1,43 @@
+{
+  "case_id": "rejection_en_after_interview",
+  "tags": ["rejection", "en", "post_interview"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Interview outcome\n\nThank you for interviewing with Larkspur Health. After careful consideration we will not be moving forward with your application for Product Manager.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Larkspur Health",
+    "role_raw": "Product Manager",
+    "event_type": "rejection",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "rejection",
+    "company_raw": "Larkspur Health",
+    "role_raw": "Product Manager",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

@@ -1,0 +1,10 @@
+// Per-stage workflow latency percentiles from RA_METRIC events (last 7 days).
+// The production benchmark of the deployed service: real traffic, no canaries.
+traces
+| where timestamp > ago(7d)
+| where message startswith "RA_METRIC "
+| extend payload = parse_json(substring(message, 10))
+| where tostring(payload.metric) == "workflow_stage_duration_ms"
+| extend stage = tostring(payload.dimensions.stage), value = todouble(payload.value)
+| summarize p50_ms = percentile(value, 50), p95_ms = percentile(value, 95), samples = count() by stage
+| order by p95_ms desc

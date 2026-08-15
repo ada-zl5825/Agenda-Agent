@@ -1,0 +1,43 @@
+{
+  "case_id": "offer_zh_simple",
+  "tags": ["offer", "zh"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 录用通知\n\n恭喜! 白桦生物决定录用您为生物信息工程师, 人事同事将与您联系入职事宜.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "白桦生物",
+    "role_raw": "生物信息工程师",
+    "event_type": "offer",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "offer",
+    "company_raw": "白桦生物",
+    "role_raw": "生物信息工程师",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

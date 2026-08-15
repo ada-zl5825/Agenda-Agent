@@ -1,0 +1,43 @@
+{
+  "case_id": "deadline_zh_health_form",
+  "tags": ["deadline", "zh", "timezone_explicit", "action_link", "no_role"],
+  "input": {
+    "received_at": "2026-08-13T16:00:00+08:00",
+    "sanitized_text": "Subject: 材料提交截止提醒\n\n远岫教育提醒您在2026年8月26日 17:00 (北京时间)前通过 ACTION_LINK_01 提交入职体检表, 逾期视为放弃.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "远岫教育",
+    "role_raw": null,
+    "event_type": "deadline",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "提交入职体检表",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-26T17:00:00+08:00",
+    "timezone_explicit": true,
+    "timezone_text": "北京时间",
+    "source_datetime_text": null,
+    "source_deadline_text": "2026年8月26日 17:00 (北京时间)",
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.97,
+    "event_confidence": 0.94,
+    "datetime_confidence": 0.97
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "deadline",
+    "company_raw": "远岫教育",
+    "role_raw": null,
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": "2026-08-26T17:00:00+08:00",
+    "timezone_explicit": true,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

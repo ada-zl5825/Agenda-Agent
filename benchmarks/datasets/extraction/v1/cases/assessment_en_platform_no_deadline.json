@@ -1,0 +1,43 @@
+{
+  "case_id": "assessment_en_platform_no_deadline",
+  "tags": ["assessment", "en", "no_time_evidence", "action_link"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Coding assessment\n\nVantage Ledger invites you to take the Backend Developer coding assessment on HackerRank. Start whenever you are ready using ACTION_LINK_01.",
+    "allowed_link_refs": ["ACTION_LINK_01"]
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Vantage Ledger",
+    "role_raw": "Backend Developer",
+    "event_type": "assessment",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "take the coding assessment",
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": "HackerRank",
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.98,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "assessment",
+    "company_raw": "Vantage Ledger",
+    "role_raw": "Backend Developer",
+    "action_required": true,
+    "action_link_ref": "ACTION_LINK_01",
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}

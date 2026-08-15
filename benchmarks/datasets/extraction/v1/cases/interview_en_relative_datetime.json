@@ -1,0 +1,43 @@
+{
+  "case_id": "interview_en_relative_datetime",
+  "tags": ["interview", "en", "relative_datetime", "timezone_missing", "needs_review"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Interview reminder\n\nFabrikam confirms your Product Designer interview tomorrow at 10:00.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Fabrikam",
+    "role_raw": "Product Designer",
+    "event_type": "interview",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-14T10:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": "tomorrow at 10:00",
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.99,
+    "datetime_confidence": 0.8
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "interview",
+    "company_raw": "Fabrikam",
+    "role_raw": "Product Designer",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": "2026-08-14T10:00:00+00:00",
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "needs_review",
+    "validation_issues": ["timezone_ambiguous"]
+  }
+}

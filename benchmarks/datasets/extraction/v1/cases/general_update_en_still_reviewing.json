@@ -1,0 +1,50 @@
+{
+  "case_id": "general_update_en_still_reviewing",
+  "tags": ["general_update", "en", "pipeline"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Application update\n\nLitware is still reviewing your application for Security Analyst and will contact you after the review.",
+    "allowed_link_refs": [],
+    "sender_domain": "litware.example"
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Litware",
+    "role_raw": "Security Analyst",
+    "event_type": "general_update",
+    "interview_round": null,
+    "action_required": false,
+    "action_text": null,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.99,
+    "event_confidence": 0.95,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "general_update",
+    "company_raw": "Litware",
+    "role_raw": "Security Analyst",
+    "action_required": false,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  },
+  "expected_domain": {
+    "outcome": "completed",
+    "application_status": "unknown",
+    "event": null,
+    "action_item_count": 0
+  }
+}

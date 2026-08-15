@@ -1,0 +1,54 @@
+[
+  {
+    "canonical_name": "Northstar Systems",
+    "domains": ["northstar.example"]
+  },
+  {
+    "canonical_name": "星澜科技",
+    "domains": ["xinglan.example"]
+  },
+  {
+    "canonical_name": "Nimbus Labs",
+    "domains": ["nimbuslabs.example"]
+  },
+  {
+    "canonical_name": "云帆信息",
+    "domains": ["yunfan.example"]
+  },
+  {
+    "canonical_name": "Adventure Works",
+    "domains": ["adventureworks.example"]
+  },
+  {
+    "canonical_name": "Tailspin Toys",
+    "domains": ["tailspintoys.example"]
+  },
+  {
+    "canonical_name": "蓝湖数据",
+    "domains": ["lanhu.example"]
+  },
+  {
+    "canonical_name": "Wide World Importers",
+    "domains": ["wideworld.example"]
+  },
+  {
+    "canonical_name": "千树网络",
+    "domains": ["qianshu.example"]
+  },
+  {
+    "canonical_name": "Harbor Analytics",
+    "domains": ["harboranalytics.example"]
+  },
+  {
+    "canonical_name": "Quartz Mobility",
+    "domains": ["quartzmobility.example"]
+  },
+  {
+    "canonical_name": "Beacon Health Tech",
+    "domains": ["beaconhealth.example"]
+  },
+  {
+    "canonical_name": "Litware",
+    "domains": ["litware.example"]
+  }
+]

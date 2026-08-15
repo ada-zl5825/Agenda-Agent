@@ -1,0 +1,31 @@
+{
+  "suites": {
+    "extraction": {
+      "replay": {
+        "recorded_at": "2026-08-15T13:41:15.697266Z",
+        "git_sha": "b853754f2a9bb3eb40cbc6a805521442b79febec",
+        "dataset_version": "v1",
+        "metrics": {
+          "schema_failure_rate": 0.0,
+          "missed_review_count": 0.0,
+          "false_review_count": 0.0,
+          "relevant_f1": 1.0,
+          "event_type_accuracy": 1.0,
+          "exact_case_match_rate": 1.0,
+          "validation_status_match_rate": 1.0,
+          "validation_issues_match_rate": 1.0,
+          "latency_p95_ms": 0.014899997040629387,
+          "field_relevant_match_rate": 1.0,
+          "field_event_type_match_rate": 1.0,
+          "field_company_raw_match_rate": 1.0,
+          "field_role_raw_match_rate": 1.0,
+          "field_action_required_match_rate": 1.0,
+          "field_action_link_ref_match_rate": 1.0,
+          "field_event_datetime_match_rate": 1.0,
+          "field_deadline_match_rate": 1.0,
+          "field_timezone_explicit_match_rate": 1.0
+        }
+      }
+    }
+  }
+}

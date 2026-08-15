@@ -1,0 +1,43 @@
+{
+  "case_id": "action_required_en_references",
+  "tags": ["action_required", "en", "no_link"],
+  "input": {
+    "received_at": "2026-08-13T09:00:00+01:00",
+    "sanitized_text": "Subject: Reference check\n\nMaple Grove Studios asks you to provide two professional references for your Gameplay Programmer application. Reply to this email with their contact details.",
+    "allowed_link_refs": []
+  },
+  "recorded_response": {
+    "relevant": true,
+    "company_raw": "Maple Grove Studios",
+    "role_raw": "Gameplay Programmer",
+    "event_type": "action_required",
+    "interview_round": null,
+    "action_required": true,
+    "action_text": "provide two professional references",
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "timezone_text": null,
+    "source_datetime_text": null,
+    "source_deadline_text": null,
+    "meeting_platform": null,
+    "location": null,
+    "company_confidence": 0.98,
+    "event_confidence": 0.9,
+    "datetime_confidence": 0.0
+  },
+  "expected": {
+    "relevant": true,
+    "event_type": "action_required",
+    "company_raw": "Maple Grove Studios",
+    "role_raw": "Gameplay Programmer",
+    "action_required": true,
+    "action_link_ref": null,
+    "event_datetime": null,
+    "deadline": null,
+    "timezone_explicit": false,
+    "validation_status": "valid",
+    "validation_issues": []
+  }
+}
