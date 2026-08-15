@@ -41,7 +41,7 @@ seed-companies = "recruitment_agent.jobs.company_seed:main"
 
 [dependency-groups]
 dev = [
-  "mypy>=1.17,<2",
+  "mypy>=1.17,<3",
   "pre-commit>=4.2,<5",
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.1,<2",
