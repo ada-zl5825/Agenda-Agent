@@ -12,7 +12,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from alembic import command
 from alembic.config import Config
@@ -74,6 +74,7 @@ from recruitment_agent.graph.runner import (
     RecruitmentWorkflowRunner,
     WorkflowStartRequest,
 )
+from recruitment_agent.links.models import ActionLinkType
 from recruitment_agent.persistence.companies import SqlAlchemyCompanyRepository
 from recruitment_agent.persistence.company_resolutions import (
     SqlAlchemyCompanyResolutionAuditRepository,
@@ -87,6 +88,7 @@ from recruitment_agent.persistence.models import (
     MicrosoftConnectionModel,
     RecruitmentEventModel,
     ReviewItemModel,
+    SecureLinkModel,
     SourceEmailModel,
 )
 from recruitment_agent.persistence.session import (
@@ -97,6 +99,44 @@ from recruitment_agent.persistence.workflow import SqlAlchemyWorkflowPersistence
 
 BENCHMARK_ACCOUNT_ID = UUID("a7d55f80-92b8-4f6c-9f6f-0a2a3c1d9b01")
 _CHECKPOINT_URL_PATTERNS = ("https://", "http://", "mailto:")
+_PLACEHOLDER_LINK_CIPHERTEXT = b"benchmark-link-ciphertext"
+_PLACEHOLDER_LINK_NONCE = b"benchmarknonce"
+_PLACEHOLDER_LINK_KEY_VERSION = "benchmark"
+_UNSAFE_ERROR_MARKERS = ("http://", "https://", "mailto:")
+
+
+def placeholder_secure_link_rows(
+    *,
+    source_email_id: UUID,
+    link_refs: tuple[str, ...],
+) -> tuple[SecureLinkModel, ...]:
+    """Encrypted-looking rows so persist can resolve ``ACTION_LINK_*`` refs.
+
+    Replay never extracts real destinations; ciphertext contains no URL bytes.
+    """
+    return tuple(
+        SecureLinkModel(
+            id=uuid4(),
+            source_email_id=source_email_id,
+            ref=ref,
+            link_type=ActionLinkType.GENERAL.value,
+            domain="benchmark.example",
+            encrypted_url=_PLACEHOLDER_LINK_CIPHERTEXT,
+            nonce=_PLACEHOLDER_LINK_NONCE,
+            encryption_key_version=_PLACEHOLDER_LINK_KEY_VERSION,
+            display_text=ref,
+        )
+        for ref in link_refs
+    )
+
+
+def sanitized_workflow_failure(exc: BaseException) -> str:
+    """Keep the exception type and a URL-free message for benchmark reports."""
+    detail = str(exc).strip()
+    lowered = detail.lower()
+    if not detail or any(marker in lowered for marker in _UNSAFE_ERROR_MARKERS):
+        return f"workflow raised {type(exc).__name__}"
+    return f"workflow raised {type(exc).__name__}: {detail}"
 
 
 class _FixedClock:
@@ -114,7 +154,9 @@ class ReplayPreparationActivities(SecureRecruitmentWorkflowActivities):
 
     The transient preparation pipeline (Graph fetch, link encryption,
     sanitization) is exercised by its own tests; this suite starts from the
-    checkpoint-safe sanitized input recorded in the dataset.
+    checkpoint-safe sanitized input recorded in the dataset. Placeholder
+    ``secure_links`` rows are seeded so persist can resolve ``ACTION_LINK_*``
+    refs without storing URL bytes.
     """
 
     def __init__(
@@ -356,6 +398,11 @@ async def _run_case(
                 has_attachments=False,
             )
         )
+        for row in placeholder_secure_link_rows(
+            source_email_id=case.source_email_id,
+            link_refs=case.input.allowed_link_refs,
+        ):
+            session.add(row)
 
     prepared = SafePreparedEmail(
         source_email_id=case.source_email_id,
@@ -403,7 +450,7 @@ async def _run_case(
             passed=False,
             expected_outcome=expected.outcome.value,
             actual_outcome=f"failed:{type(exc).__name__}",
-            mismatches=("workflow raised an exception",),
+            mismatches=(sanitized_workflow_failure(exc),),
             duration_ms=(perf_counter() - started) * 1000,
             stage_durations_ms=timing.stage_durations_ms,
         )

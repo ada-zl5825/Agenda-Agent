@@ -23,8 +23,10 @@ from recruitment_agent.email.models import (
 from recruitment_agent.extraction.langchain_azure import (
     LangChainRecruitmentExtractionModel,
     _create_langchain_chat_model,
+    _token_scope_for_endpoint,
     _uses_foundry_v1,
     create_azure_recruitment_extraction_model,
+    sanitized_provider_failure,
 )
 from recruitment_agent.extraction.models import (
     ExtractionIssueCode,
@@ -194,6 +196,7 @@ async def test_langchain_adapter_replaces_provider_failure_with_safe_error() -> 
         await adapter.extract(request)
 
     assert "private email body" not in str(raised.value)
+    assert raised.value.provider_failure == "RuntimeError"
 
 
 def test_prompt_extracts_wall_clock_without_inventing_timezone() -> None:
@@ -272,6 +275,43 @@ async def test_azure_factory_composes_strict_model_without_api_key() -> None:
 )
 def test_foundry_v1_endpoint_detection(endpoint: str, expected: bool) -> None:
     assert _uses_foundry_v1(endpoint) is expected
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected_scope"),
+    [
+        (
+            "https://aoai-agenda-agent-prod-uks.openai.azure.com/openai/v1",
+            "https://cognitiveservices.azure.com/.default",
+        ),
+        (
+            "https://resource.cognitiveservices.azure.com/openai/v1",
+            "https://cognitiveservices.azure.com/.default",
+        ),
+        (
+            "https://foundry.example.test/openai/v1",
+            "https://ai.azure.com/.default",
+        ),
+        (
+            "https://classic.openai.azure.com",
+            "https://cognitiveservices.azure.com/.default",
+        ),
+    ],
+)
+def test_token_scope_follows_host_not_only_v1_path(endpoint: str, expected_scope: str) -> None:
+    assert _token_scope_for_endpoint(endpoint) == expected_scope
+
+
+def test_sanitized_provider_failure_keeps_status_and_drops_body() -> None:
+    class _AuthError(Exception):
+        def __init__(self) -> None:
+            super().__init__("https://aoai.example/openai/v1 leaked a token")
+            self.status_code = 401
+
+    label = sanitized_provider_failure(_AuthError())
+    assert label == "_AuthError:401"
+    assert "https://" not in label
+    assert "token" not in label
 
 
 def test_foundry_v1_client_uses_deployment_as_model_and_async_token_provider() -> None:

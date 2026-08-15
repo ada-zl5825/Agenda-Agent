@@ -52,6 +52,16 @@ def replay_model_for(cases: tuple[BenchmarkCase, ...]) -> ReplayExtractionModel:
     return ReplayExtractionModel({case.source_email_id: case.recorded_response for case in cases})
 
 
+def _invocation_error_label(exc: ExtractionInvocationError) -> str:
+    """Keep only the adapter's already-sanitized provider failure token."""
+    detail = exc.provider_failure
+    if detail is None or not detail:
+        return "invocation_error"
+    if any(not (part.isidentifier() or part.isdigit()) for part in detail.split(":")):
+        return "invocation_error"
+    return f"invocation_error:{detail}"
+
+
 def build_case_request(case: BenchmarkCase) -> RecruitmentExtractionRequest:
     return RecruitmentExtractionRequest(
         source_email_id=case.source_email_id,
@@ -86,13 +96,13 @@ async def run_extraction_suite(
             started = perf_counter()
             try:
                 outcome = await service.extract_request(request)
-            except ExtractionInvocationError:
+            except ExtractionInvocationError as exc:
                 consume_extraction_usage()
                 return score_extraction_case(
                     case,
                     extraction=None,
                     validation=None,
-                    error="invocation_error",
+                    error=_invocation_error_label(exc),
                     latency_ms=(perf_counter() - started) * 1000,
                 )
             except Exception as exc:

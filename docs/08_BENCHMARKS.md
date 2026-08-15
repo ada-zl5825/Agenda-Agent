@@ -71,7 +71,9 @@ Each case file contains:
   validation status and issues.
 - `expected_domain` (21 cases) - the final domain state the workflow must
   reach: outcome (`completed` / `needs_review` / `ignored`), application
-  status, event row, action-item count, or review type.
+  status, event row, action-item count, or review type. Pipeline replay seeds
+  placeholder encrypted `secure_links` rows for `allowed_link_refs` so persist
+  can resolve `ACTION_LINK_*` without storing URL bytes.
 
 Authoring rules are enforced by `tests/benchmarks/test_dataset_integrity.py`,
 which runs in the default `pytest` suite: every non-null evidence string must

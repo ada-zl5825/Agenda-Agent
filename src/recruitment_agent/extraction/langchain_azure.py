@@ -22,6 +22,7 @@ from recruitment_agent.extraction.usage import record_extraction_usage
 _AZURE_OPENAI_CLASSIC_SCOPE = "https://cognitiveservices.azure.com/.default"
 _FOUNDRY_SCOPE = "https://ai.azure.com/.default"
 _FOUNDRY_V1_PATH = "/openai/v1"
+_COGNITIVE_SERVICES_HOST_SUFFIXES = (".openai.azure.com", ".cognitiveservices.azure.com")
 
 
 def _reject_synchronous_model_call() -> str:
@@ -54,6 +55,33 @@ def sum_usage_tokens(metadata: object, field: str) -> int | None:
 def _uses_foundry_v1(endpoint: str) -> bool:
     """Return whether an endpoint targets the stable Foundry OpenAI v1 route."""
     return urlsplit(endpoint).path.rstrip("/").lower().endswith(_FOUNDRY_V1_PATH)
+
+
+def _token_scope_for_endpoint(endpoint: str) -> str:
+    """Choose the Entra audience from the host, not only the request path.
+
+    Classic Azure OpenAI and Cognitive Services hosts still require the
+    Cognitive Services scope even when callers use the ``/openai/v1`` route.
+    """
+    host = (urlsplit(endpoint).hostname or "").lower()
+    if any(host.endswith(suffix) for suffix in _COGNITIVE_SERVICES_HOST_SUFFIXES):
+        return _AZURE_OPENAI_CLASSIC_SCOPE
+    if _uses_foundry_v1(endpoint):
+        return _FOUNDRY_SCOPE
+    return _AZURE_OPENAI_CLASSIC_SCOPE
+
+
+def sanitized_provider_failure(exc: BaseException) -> str:
+    """Return exception type and optional HTTP status; never message text."""
+    name = type(exc).__name__
+    if not name.isidentifier():
+        name = "ProviderError"
+    status = getattr(exc, "status_code", None)
+    if not isinstance(status, int):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int) and 100 <= status <= 599:
+        return f"{name}:{status}"
+    return name
 
 
 def _create_langchain_chat_model(
@@ -122,8 +150,12 @@ class LangChainRecruitmentExtractionModel:
                 if isinstance(result, RecruitmentExtraction)
                 else RecruitmentExtraction.model_validate(result)
             )
-        except Exception:
-            raise ExtractionInvocationError("structured extraction failed") from None
+        except Exception as exc:
+            failure = sanitized_provider_failure(exc)
+            raise ExtractionInvocationError(
+                f"structured extraction failed ({failure})",
+                provider_failure=failure,
+            ) from None
         latency_ms = int((perf_counter() - started) * 1000)
         record_extraction_usage(
             ExtractionUsage(
@@ -159,9 +191,7 @@ def create_azure_recruitment_extraction_model(
     credential: DefaultAzureCredential | None = None
     if token_provider is None:
         credential = DefaultAzureCredential()
-        token_scope = (
-            _FOUNDRY_SCOPE if _uses_foundry_v1(str(endpoint)) else _AZURE_OPENAI_CLASSIC_SCOPE
-        )
+        token_scope = _token_scope_for_endpoint(str(endpoint))
 
         async def managed_identity_token_provider() -> str:
             token = await credential.get_token(token_scope)
