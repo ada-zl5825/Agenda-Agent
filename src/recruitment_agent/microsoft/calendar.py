@@ -1,6 +1,7 @@
 """Typed Microsoft Graph Calendar adapter with bounded retries."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -21,6 +22,8 @@ from recruitment_agent.microsoft.auth_contracts import AccessTokenProvider
 from recruitment_agent.microsoft.graph_models import GraphCalendarEvent
 
 Sleep = Callable[[float], Awaitable[None]]
+
+LOGGER = logging.getLogger(__name__)
 
 
 class GraphCalendarClient:
@@ -105,13 +108,31 @@ class GraphCalendarClient:
                     },
                 )
             except httpx.RequestError as exc:
+                LOGGER.warning(
+                    "graph_calendar_transport_error method=%s attempt=%d error=%s",
+                    method,
+                    attempt + 1,
+                    type(exc).__name__,
+                )
                 if attempt + 1 >= self._max_attempts:
                     raise failure_type("Graph Calendar transport failed") from exc
                 await self._sleep(self._retry_delay(attempt, response=None))
                 continue
 
             if response.is_success:
+                LOGGER.info(
+                    "graph_calendar_write method=%s status=%d attempt=%d",
+                    method,
+                    response.status_code,
+                    attempt + 1,
+                )
                 return response
+            LOGGER.warning(
+                "graph_calendar_error method=%s status=%d attempt=%d",
+                method,
+                response.status_code,
+                attempt + 1,
+            )
             if response.status_code == httpx.codes.UNAUTHORIZED:
                 if refreshed_after_unauthorized or attempt + 1 >= self._max_attempts:
                     raise AuthenticationFailedError(

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, timedelta
@@ -21,6 +22,8 @@ from recruitment_agent.calendar.models import (
 )
 from recruitment_agent.domain.enums import EventStatus, RecruitmentEventType
 from recruitment_agent.domain.ports import Clock
+
+LOGGER = logging.getLogger(__name__)
 
 _CALENDAR_TRANSACTION_NAMESPACE = UUID("30160141-ccde-424e-aa4f-aef60113d2d2")
 _URL = re.compile(r"(?i)(?:\b[a-z][a-z0-9+.-]*://|\bwww\.)")
@@ -241,6 +244,18 @@ class CalendarSyncService:
         self._enabled = enabled
 
     async def sync(self, request: CalendarSyncRequest) -> CalendarSyncResult:
+        result = await self._sync(request)
+        # Enum, reason code and opaque UUID only; production diagnosis of "why
+        # was no calendar event written" is impossible without this line.
+        LOGGER.info(
+            "calendar_sync_outcome operation=%s reason=%s event=%s",
+            result.operation.value,
+            result.reason,
+            request.recruitment_event_id,
+        )
+        return result
+
+    async def _sync(self, request: CalendarSyncRequest) -> CalendarSyncResult:
         if not self._enabled:
             return CalendarSyncResult(
                 operation=CalendarSyncOperation.DISABLED,

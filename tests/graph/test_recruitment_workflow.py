@@ -90,6 +90,22 @@ class ReviewableCalendarSync:
         )
 
 
+class UnresolvableCalendarSync:
+    """A review reason no review choice can repair (for example missing event
+    time data). Always demanding another review simulates the production loop
+    where the same calendar question re-opened after every answer."""
+
+    def __init__(self) -> None:
+        self.requests: list[CalendarSyncRequest] = []
+
+    async def sync(self, request: CalendarSyncRequest) -> CalendarSyncResult:
+        self.requests.append(request)
+        return CalendarSyncResult(
+            operation=CalendarSyncOperation.REVIEW_REQUIRED,
+            reason="calendar_timezone_unresolved",
+        )
+
+
 class FakeActivities:
     def __init__(
         self,
@@ -492,6 +508,50 @@ async def test_unsafe_calendar_update_interrupts_then_replaces_after_review() ->
         "reason": "missing_calendar_event_replaced",
     }
     assert [request.replace_missing_event for request in calendar.requests] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_unfixable_calendar_review_offers_no_dead_end_apply_choice() -> None:
+    """Regression: "apply" only repairs a deleted linked event. Offering it for
+    other reasons looped the same review forever in production."""
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(prepared=_prepared(), extraction=_result())
+    runner = _runner(activities, persistence, calendar=UnresolvableCalendarSync())
+
+    interrupted = await runner.start(_request())
+
+    assert interrupted.interrupted
+    payload = interrupted.interrupt_payloads[0]
+    assert payload["review_type"] == "UNSAFE_CALENDAR_UPDATE"
+    assert payload["reason"] == "calendar_timezone_unresolved"
+    assert payload["allowed_choices"] == ["skip_calendar_update", "ignore"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_review_never_reopens_for_an_already_answered_reason() -> None:
+    """Regression: once a human has answered a calendar review, the same reason
+    must complete the run as a skipped write instead of re-opening the
+    identical question in an endless loop."""
+    persistence = FakeWorkflowPersistence()
+    activities = FakeActivities(prepared=_prepared(), extraction=_result())
+    calendar = UnresolvableCalendarSync()
+    runner = _runner(activities, persistence, calendar=calendar)
+
+    interrupted = await runner.start(_request())
+    resumed = await runner.resume(
+        processing_run_id=RUN_ID,
+        source_email_id=SOURCE_EMAIL_ID,
+        decision=ReviewDecision(choice="skip_calendar_update"),
+    )
+
+    assert interrupted.interrupted
+    assert not resumed.interrupted
+    assert resumed.state["status"] == ProcessingRunStatus.COMPLETED.value
+    assert resumed.state["calendar_operation"] == {
+        "operation": "skipped",
+        "reason": "calendar_timezone_unresolved",
+    }
+    assert persistence.final_status is ProcessingRunStatus.COMPLETED
 
 
 @pytest.mark.asyncio
