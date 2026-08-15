@@ -392,6 +392,13 @@ forward, datetime-override, and duplicate-calendar revisions. Operational conseq
   `/brief/today` is the live console-styled preview; a Daily Brief email already sent that local day is
   at-most-once and will not rewrite. Active `offer` / `rejection` / `application_received`
   events appear under `NEW UPDATES`.
+- **Calendar Review**: `apply_proposed_update` is offered only when the linked
+  Outlook event is missing (`linked_calendar_event_missing`). Other calendar
+  review reasons offer skip or ignore; applying them cannot create a safe event
+  and previously re-opened the same form. A cancelled Review POST (browser
+  disconnect or double submit) no longer strands the run: the identical
+  decision can be submitted again, and an orphaned `处理中断` card for that
+  email is not treated as a follow-up review.
 
 ### One-time cleanup after the Base64 queue fix
 

@@ -10,7 +10,11 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 
 from recruitment_agent.application.errors import TimeEvidenceUnresolvedError
-from recruitment_agent.calendar.models import CalendarSyncRequest
+from recruitment_agent.calendar.models import (
+    CalendarSyncOperation,
+    CalendarSyncRequest,
+    CalendarSyncResult,
+)
 from recruitment_agent.domain.processing import (
     ApplicationResolution,
     ApplicationResolutionKind,
@@ -717,6 +721,12 @@ async def persist_domain_changes(
     }
 
 
+# "Apply" can only fix a review whose remedy is recreating the deleted linked
+# event. Every other calendar review reason has no automatic remedy, so offering
+# "apply" there would re-open the same review forever.
+_CALENDAR_APPLY_REASONS = frozenset({"linked_calendar_event_missing"})
+
+
 async def sync_calendar_placeholder(
     state: RecruitmentGraphState,
     runtime: Runtime[RecruitmentGraphContext],
@@ -738,22 +748,43 @@ async def sync_calendar_placeholder(
         "current_stage": stage.value,
         "calendar_operation": result.model_dump(mode="json"),
     }
+    already_reviewed = result.reason in state.get("reviewed_reasons", [])
+    if result.needs_review and already_reviewed:
+        # Re-opening the identical calendar question cannot make progress.
+        # skip_calendar_update is the normal path; this also covers a planner
+        # that still returns REVIEW_REQUIRED after apply was already tried.
+        update["calendar_operation"] = CalendarSyncResult(
+            operation=CalendarSyncOperation.SKIPPED,
+            reason=result.reason,
+        ).model_dump(mode="json")
+        update["status"] = ProcessingRunStatus.RUNNING.value
+        return update
     if result.needs_review:
+        allowed_choices: tuple[str, ...]
+        if result.reason in _CALENDAR_APPLY_REASONS:
+            question = (
+                "The proposed Calendar change is not safe to apply automatically. "
+                "Choose how this event should be handled."
+            )
+            allowed_choices = (
+                "apply_proposed_update",
+                "skip_calendar_update",
+                "ignore",
+            )
+        else:
+            question = (
+                "The Calendar change cannot be applied automatically for this "
+                "event. Choose how it should be handled."
+            )
+            allowed_choices = ("skip_calendar_update", "ignore")
         update.update(
             {
                 "status": ProcessingRunStatus.NEEDS_REVIEW.value,
                 "review_request": ReviewRequest(
                     review_type=ReviewType.UNSAFE_CALENDAR_UPDATE,
                     reason=result.reason,
-                    question=(
-                        "The proposed Calendar change is not safe to apply automatically. "
-                        "Choose how this event should be handled."
-                    ),
-                    allowed_choices=(
-                        "apply_proposed_update",
-                        "skip_calendar_update",
-                        "ignore",
-                    ),
+                    question=question,
+                    allowed_choices=allowed_choices,
                 ).model_dump(mode="json"),
                 "review_resume_stage": stage.value,
             }

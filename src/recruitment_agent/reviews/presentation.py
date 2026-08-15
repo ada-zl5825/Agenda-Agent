@@ -23,6 +23,13 @@ _REASON_LABELS: dict[str, str] = {
     "deadline_unresolved": "补全截止日期",
     "datetime_conflict": "确认冲突时间",
     "extraction_needs_review": "确认抽出结果",
+    "linked_calendar_event_missing": "重建被删除的日历事件",
+    "application_not_resolved_for_calendar": "日历所需申请信息未确认",
+    "calendar_timezone_unresolved": "日历时区未确认",
+    "calendar_datetime_unresolved": "日历时间未确认",
+    "calendar_datetime_not_timezone_aware": "日历时间缺少时区",
+    "inactive_event_has_calendar_link": "已失效事件仍有日历记录",
+    "calendar_link_identity_conflict": "日历事件归属冲突",
 }
 
 _EVENT_TYPE_LABELS: dict[str, str] = {
