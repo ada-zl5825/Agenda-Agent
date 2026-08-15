@@ -71,9 +71,10 @@ Each case file contains:
   validation status and issues.
 - `expected_domain` (21 cases) - the final domain state the workflow must
   reach: outcome (`completed` / `needs_review` / `ignored`), application
-  status, event row, action-item count, or review type. Pipeline replay seeds
-  placeholder encrypted `secure_links` rows for `allowed_link_refs` so persist
-  can resolve `ACTION_LINK_*` without storing URL bytes.
+  status, event row, action-item count, or review type. Pipeline replay flushes
+  the source-email row first, then seeds placeholder encrypted `secure_links`
+  rows for `allowed_link_refs` so persist can resolve `ACTION_LINK_*` without
+  storing URL bytes or violating the source-email foreign key.
 
 Authoring rules are enforced by `tests/benchmarks/test_dataset_integrity.py`,
 which runs in the default `pytest` suite: every non-null evidence string must
@@ -130,11 +131,14 @@ weekly live job gates on absolute thresholds only.
 
 Requirements for the live job, once, in the GitHub `production` environment:
 `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` variables (and
-optionally `AZURE_OPENAI_API_VERSION`), plus the deploy service principal
-holding the `Cognitive Services OpenAI User` role on the Azure OpenAI
-resource. Dataset integrity and harness unit tests already run in the
-`quality` workflow on every push, so a broken dataset never reaches the
-benchmark jobs.
+optionally `AZURE_OPENAI_API_VERSION`). After OIDC sign-in the job grants
+`Cognitive Services OpenAI User` and `Cognitive Services User` on the account
+named in the endpoint host to the deploy identity (and the Function App
+runtime identity when those variables are present), then waits until `GET
+/models` succeeds. The deploy identity needs Role Based Access Control
+Administrator on the resource group so that grant is allowed. Dataset
+integrity and harness unit tests already run in the `quality` workflow on
+every push, so a broken dataset never reaches the benchmark jobs.
 
 ## Production telemetry (the cloud benchmark)
 

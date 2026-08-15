@@ -92,6 +92,13 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --all-groups --locked
 
+      - name: Ensure model data-plane access
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_FUNCTIONAPP_NAME: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+        run: bash scripts/ensure-openai-data-plane-access.sh
+
       - name: Live extraction benchmark (gate)
         run: >-
           uv run python -m benchmarks.cli run extraction
