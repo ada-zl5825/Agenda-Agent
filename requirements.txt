@@ -152,7 +152,7 @@ multidict==6.7.1
     #   yarl
 openai==3.0.0
     # via langchain-openai
-orjson==3.11.9
+orjson==3.12.0
     # via
     #   langgraph-checkpoint-postgres
     #   langgraph-sdk
