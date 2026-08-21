@@ -276,7 +276,7 @@ websockets==15.0.1
     #   langsmith
 werkzeug==3.1.8
     # via azure-functions
-xxhash==4.0.0
+xxhash==4.0.1
     # via
     #   langgraph
     #   langsmith
