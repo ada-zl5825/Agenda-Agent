@@ -110,7 +110,7 @@ langchain-core==1.5.4
     #   langgraph-prebuilt
     #   langgraph-sdk
     #   recruitment-inbox-agent
-langchain-openai==1.5.0
+langchain-openai==1.5.2
     # via recruitment-inbox-agent
 langchain-protocol==0.0.18
     # via
