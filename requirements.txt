@@ -150,7 +150,7 @@ multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
-openai==3.0.0
+openai==3.2.0
     # via langchain-openai
 orjson==3.11.9
     # via
