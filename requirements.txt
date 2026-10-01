@@ -192,7 +192,7 @@ pydantic-core==2.46.4
     # via pydantic
 pydantic-settings==2.15.0
     # via recruitment-inbox-agent
-pyjwt==2.13.0
+pyjwt==2.15.0
     # via msal
 python-dotenv==1.2.2
     # via pydantic-settings
