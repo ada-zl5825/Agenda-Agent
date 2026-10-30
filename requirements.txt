@@ -116,7 +116,7 @@ langchain-protocol==0.0.18
     # via
     #   langchain-core
     #   langgraph-sdk
-langgraph==1.2.11
+langgraph==1.2.14
     # via recruitment-inbox-agent
 langgraph-checkpoint==4.2.0
     # via
